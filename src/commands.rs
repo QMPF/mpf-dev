@@ -50,16 +50,7 @@ pub async fn setup(version: Option<String>) -> Result<()> {
     }
     
     // Set as current
-    let current_link = config::current_link();
-    if current_link.exists() || current_link.is_symlink() {
-        fs::remove_file(&current_link)?;
-    }
-    
-    #[cfg(unix)]
-    std::os::unix::fs::symlink(&version_dir, &current_link)?;
-    
-    #[cfg(windows)]
-    std::os::windows::fs::symlink_dir(&version_dir, &current_link)?;
+    config::set_current_version(&version_normalized)?;
     
     // Update dev.json
     let mut config = DevConfig::load().unwrap_or_default();
@@ -224,21 +215,12 @@ pub fn use_version(version: &str) -> Result<()> {
         );
     }
     
-    let current_link = config::current_link();
-    if current_link.exists() || current_link.is_symlink() {
-        fs::remove_file(&current_link)?;
-    }
-    
-    #[cfg(unix)]
-    std::os::unix::fs::symlink(&version_dir, &current_link)?;
-    
-    #[cfg(windows)]
-    std::os::windows::fs::symlink_dir(&version_dir, &current_link)?;
+    config::set_current_version(&version_normalized)?;
     
     // Update dev.json
-    let mut config = DevConfig::load().unwrap_or_default();
-    config.sdk_version = Some(version_normalized.clone());
-    config.save()?;
+    let mut dev_config = DevConfig::load().unwrap_or_default();
+    dev_config.sdk_version = Some(version_normalized.clone());
+    dev_config.save()?;
     
     println!(
         "{} Now using SDK {}",

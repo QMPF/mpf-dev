@@ -16,9 +16,21 @@ pub fn dev_config_path() -> PathBuf {
     sdk_root().join("dev.json")
 }
 
-/// Path to current version symlink
+/// Path to current version pointer file (stores version name)
+pub fn current_pointer_path() -> PathBuf {
+    sdk_root().join("current.txt")
+}
+
+/// Get the current SDK directory path
+/// On Unix: follows symlink if exists, falls back to pointer file
+/// On Windows: always uses pointer file
 pub fn current_link() -> PathBuf {
-    sdk_root().join("current")
+    if let Some(version) = current_version() {
+        version_dir(&version)
+    } else {
+        // Fallback - this path won't exist but callers check existence
+        sdk_root().join("current")
+    }
 }
 
 /// Path to a specific version directory
@@ -87,16 +99,49 @@ impl DevConfig {
     }
 }
 
-/// Get the current SDK version from symlink
+/// Get the current SDK version
 pub fn current_version() -> Option<String> {
-    let link = current_link();
-    if link.exists() {
-        fs::read_link(&link)
+    let pointer = current_pointer_path();
+    if pointer.exists() {
+        fs::read_to_string(&pointer)
             .ok()
-            .and_then(|p| p.file_name().map(|s| s.to_string_lossy().to_string()))
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
     } else {
+        // Fallback: check for legacy symlink on Unix
+        #[cfg(unix)]
+        {
+            let legacy = sdk_root().join("current");
+            if legacy.is_symlink() {
+                return fs::read_link(&legacy)
+                    .ok()
+                    .and_then(|p| p.file_name().map(|s| s.to_string_lossy().to_string()));
+            }
+        }
         None
     }
+}
+
+/// Set the current SDK version
+pub fn set_current_version(version: &str) -> Result<()> {
+    let root = sdk_root();
+    fs::create_dir_all(&root)?;
+    
+    let pointer = current_pointer_path();
+    fs::write(&pointer, version)?;
+    
+    // On Unix, also create/update symlink for compatibility
+    #[cfg(unix)]
+    {
+        let link = root.join("current");
+        if link.exists() || link.is_symlink() {
+            let _ = fs::remove_file(&link);
+        }
+        let target = version_dir(version);
+        let _ = std::os::unix::fs::symlink(&target, &link);
+    }
+    
+    Ok(())
 }
 
 /// List all installed SDK versions
