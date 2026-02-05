@@ -186,6 +186,10 @@ This means:
 }
 ```
 
+## Documentation
+
+📖 **[完整开发流程指南](docs/DEVELOPMENT-WORKFLOW.md)** - 从环境准备到发布的完整流程
+
 ## License
 
 MIT
