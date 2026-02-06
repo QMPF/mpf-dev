@@ -83,6 +83,39 @@ enum Commands {
         #[arg(last = true)]
         args: Vec<String>,
     },
+    
+    /// Manage full-source workspace (all components from source)
+    Workspace {
+        #[command(subcommand)]
+        action: WorkspaceAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum WorkspaceAction {
+    /// Initialize a new workspace with all MPF components
+    Init {
+        /// Workspace directory (default: current directory)
+        #[arg(short, long)]
+        path: Option<String>,
+    },
+    
+    /// Build all components in workspace
+    Build {
+        /// Build type: Debug or Release
+        #[arg(short, long, default_value = "Debug")]
+        config: String,
+    },
+    
+    /// Run mpf-host from workspace
+    Run {
+        /// Additional arguments to pass to mpf-host
+        #[arg(last = true)]
+        args: Vec<String>,
+    },
+    
+    /// Show workspace status
+    Status,
 }
 
 #[tokio::main]
@@ -100,5 +133,11 @@ async fn main() -> Result<()> {
         Commands::Status => commands::status(),
         Commands::Env => commands::env_vars(),
         Commands::Run { debug, args } => commands::run(debug, args),
+        Commands::Workspace { action } => match action {
+            WorkspaceAction::Init { path } => commands::workspace_init(path),
+            WorkspaceAction::Build { config } => commands::workspace_build(&config),
+            WorkspaceAction::Run { args } => commands::workspace_run(args),
+            WorkspaceAction::Status => commands::workspace_status(),
+        },
     }
 }
