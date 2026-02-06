@@ -161,6 +161,3 @@ async fn main() -> Result<()> {
         },
     }
 }
-
-// Re-export LinkAction for use in commands module
-pub use crate::LinkAction;
