@@ -720,15 +720,15 @@ pub fn status() -> Result<()> {
 
 /// Env command: print environment variables
 pub fn env_vars() -> Result<()> {
-    let (sdk_root, lib_path, qml_path, plugin_path, mpf_plugin_path, _host_path) = build_env_paths()?;
-    
+    let (sdk_root, lib_path, qml_path, plugin_path, mpf_plugin_path, _host_path, host_qml_path) = build_env_paths()?;
+
     println!("{}", "# MPF Development Environment".bold().cyan());
     println!("{}", "# Add these to your shell or IDE:".dimmed());
     println!();
-    
+
     // Detect Qt path from common locations
     let qt_hint = detect_qt_path();
-    
+
     #[cfg(unix)]
     {
         println!("{}", "# === Unix/Linux/macOS ===".green());
@@ -744,8 +744,11 @@ pub fn env_vars() -> Result<()> {
         if !mpf_plugin_path.is_empty() {
             println!("export MPF_PLUGIN_PATH=\"{}\"", mpf_plugin_path);
         }
+        if let Some(ref hqp) = host_qml_path {
+            println!("export MPF_QML_PATH=\"{}\"", hqp);
+        }
     }
-    
+
     #[cfg(windows)]
     {
         println!("{}", "# === Windows (CMD) ===".green());
@@ -761,7 +764,10 @@ pub fn env_vars() -> Result<()> {
         if !mpf_plugin_path.is_empty() {
             println!("set MPF_PLUGIN_PATH={}", mpf_plugin_path);
         }
-        
+        if let Some(ref hqp) = host_qml_path {
+            println!("set MPF_QML_PATH={}", hqp);
+        }
+
         println!();
         println!("{}", "# === Windows (PowerShell) ===".green());
         println!("$env:MPF_SDK_ROOT=\"{}\"", sdk_root);
@@ -775,6 +781,9 @@ pub fn env_vars() -> Result<()> {
         println!("$env:QT_PLUGIN_PATH=\"{}\"", plugin_path);
         if !mpf_plugin_path.is_empty() {
             println!("$env:MPF_PLUGIN_PATH=\"{}\"", mpf_plugin_path);
+        }
+        if let Some(ref hqp) = host_qml_path {
+            println!("$env:MPF_QML_PATH=\"{}\"", hqp);
         }
     }
     
@@ -836,12 +845,12 @@ pub fn run(debug: bool, args: Vec<String>) -> Result<()> {
         bail!("No SDK version set. Run `mpf-dev setup` first.");
     }
     
-    let (sdk_root, lib_path, qml_path, plugin_path, mpf_plugin_path, host_path) = build_env_paths()?;
-    
+    let (sdk_root, lib_path, qml_path, plugin_path, mpf_plugin_path, host_path, host_qml_path) = build_env_paths()?;
+
     if !host_path.exists() {
         bail!("mpf-host not found at: {}", host_path.display());
     }
-    
+
     if debug {
         println!("{}", "Running with development overrides:".dimmed());
         println!("  MPF_SDK_ROOT={}", sdk_root);
@@ -854,34 +863,44 @@ pub fn run(debug: bool, args: Vec<String>) -> Result<()> {
         if !mpf_plugin_path.is_empty() {
             println!("  MPF_PLUGIN_PATH={}", mpf_plugin_path);
         }
+        if let Some(ref hqp) = host_qml_path {
+            println!("  MPF_QML_PATH={}", hqp);
+        }
         println!();
     }
-    
+
     let mut cmd = Command::new(&host_path);
     cmd.args(&args);
-    
+
     // MPF_SDK_ROOT tells mpf-host where the SDK is installed
     // This is the primary way mpf-host discovers its paths
     cmd.env("MPF_SDK_ROOT", &sdk_root);
-    
+
     #[cfg(unix)]
     {
         cmd.env("LD_LIBRARY_PATH", &lib_path);
     }
-    
+
     #[cfg(windows)]
     {
         let current_path = env::var("PATH").unwrap_or_default();
         cmd.env("PATH", format!("{};{}", lib_path, current_path));
     }
-    
+
     cmd.env("QML_IMPORT_PATH", &qml_path);
     cmd.env("QT_PLUGIN_PATH", &plugin_path);
-    
+
     // Set MPF_PLUGIN_PATH for mpf-host to discover linked plugins
     // This allows linked source plugins to override SDK binary plugins
     if !mpf_plugin_path.is_empty() {
         cmd.env("MPF_PLUGIN_PATH", &mpf_plugin_path);
+    }
+
+    // Set MPF_QML_PATH to override host's QML base path when host is linked
+    // This ensures mpf-host loads Main.qml from the linked build directory
+    // instead of from the SDK installation
+    if let Some(ref hqp) = host_qml_path {
+        cmd.env("MPF_QML_PATH", hqp);
     }
     
     let status = cmd.status()?;
@@ -1396,8 +1415,8 @@ pub fn workspace_status() -> Result<()> {
 // =============================================================================
 
 /// Build environment path strings
-/// Returns: (sdk_root, lib_path, qml_path, qt_plugin_path, mpf_plugin_path, host_path)
-fn build_env_paths() -> Result<(String, String, String, String, String, PathBuf)> {
+/// Returns: (sdk_root, lib_path, qml_path, qt_plugin_path, mpf_plugin_path, host_path, host_qml_path)
+fn build_env_paths() -> Result<(String, String, String, String, String, PathBuf, Option<String>)> {
     let dev_config = DevConfig::load().unwrap_or_default();
     let sdk = config::current_link();
     
@@ -1413,6 +1432,7 @@ fn build_env_paths() -> Result<(String, String, String, String, String, PathBuf)
     let mut plugin_paths: Vec<String> = Vec::new();
     let mut mpf_plugin_paths: Vec<String> = Vec::new();  // MPF plugin paths for development
     let mut host_bin_override: Option<String> = None;
+    let mut host_qml_override: Option<String> = None;
     
     // Source components first (higher priority)
     for (name, comp) in &dev_config.components {
@@ -1433,10 +1453,13 @@ fn build_env_paths() -> Result<(String, String, String, String, String, PathBuf)
                 plugin_paths.push(plugin.clone());
             }
             
-            // Check for host component bin override
+            // Check for host component bin/qml override
             if name == "host" {
                 if let Some(bin) = &comp.bin {
                     host_bin_override = Some(bin.clone());
+                }
+                if let Some(qml) = &comp.qml {
+                    host_qml_override = Some(qml.clone());
                 }
             }
             
@@ -1469,5 +1492,6 @@ fn build_env_paths() -> Result<(String, String, String, String, String, PathBuf)
         plugin_paths.join(sep),
         mpf_plugin_paths.join(sep),
         host_path,
+        host_qml_override,
     ))
 }
