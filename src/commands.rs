@@ -838,6 +838,191 @@ fn detect_qt_path() -> Option<String> {
     None
 }
 
+/// Try to detect MinGW compiler paths from Qt installation
+/// Navigates from Qt path (e.g. C:/Qt/6.8.3/mingw_64) up to C:/Qt/Tools/,
+/// finds the newest mingw* directory with gcc.exe and g++.exe
+fn detect_mingw_path(qt_path: &str) -> Option<(String, String)> {
+    let qt = std::path::Path::new(qt_path);
+    // Navigate up to Qt root: C:/Qt/6.8.3/mingw_64 -> C:/Qt
+    let qt_root = qt.parent()?.parent()?;
+    let tools_dir = qt_root.join("Tools");
+    if !tools_dir.exists() {
+        return None;
+    }
+
+    let mut candidates: Vec<_> = fs::read_dir(&tools_dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            name.starts_with("mingw") && e.path().is_dir()
+        })
+        .collect();
+
+    // Sort descending so newest version is first
+    candidates.sort_by(|a, b| {
+        b.file_name()
+            .to_string_lossy()
+            .cmp(&a.file_name().to_string_lossy())
+    });
+
+    for entry in candidates {
+        let bin = entry.path().join("bin");
+        let gcc = bin.join("gcc.exe");
+        let gpp = bin.join("g++.exe");
+        if gcc.exists() && gpp.exists() {
+            let gcc_str = gcc.to_string_lossy().replace('\\', "/");
+            let gpp_str = gpp.to_string_lossy().replace('\\', "/");
+            return Some((gcc_str, gpp_str));
+        }
+    }
+    None
+}
+
+/// Map component name to CMake package directory variable name
+fn component_cmake_dir_var(component_name: &str) -> Option<&'static str> {
+    match component_name {
+        "ui-components" => Some("MPFUIComponents_DIR"),
+        "http-client" => Some("MPFHttpClient_DIR"),
+        _ => None,
+    }
+}
+
+/// Init command: generate CMakeUserPresets.json for the current project
+pub fn init() -> Result<()> {
+    println!("{}", "MPF Project Init".bold().cyan());
+
+    let cwd = env::current_dir()?;
+
+    // Verify CMakeLists.txt exists
+    if !cwd.join("CMakeLists.txt").exists() {
+        bail!("No CMakeLists.txt found in current directory. Run this from a CMake project root.");
+    }
+
+    // Load dev.json for linked source components
+    let dev_config = DevConfig::load().unwrap_or_default();
+
+    // Detect Qt path
+    let qt_path = detect_qt_path()
+        .context("Could not detect Qt installation. Set QT_DIR or Qt6_DIR environment variable.")?;
+    let qt_path_fwd = qt_path.replace('\\', "/");
+
+    // Detect MinGW compilers
+    let (gcc, gpp) = detect_mingw_path(&qt_path)
+        .context("Could not detect MinGW compilers under Qt Tools directory.")?;
+
+    // SDK current path
+    let sdk_current = config::current_link();
+    let sdk_current_str = sdk_current.to_string_lossy().replace('\\', "/");
+
+    // Build CMAKE_PREFIX_PATH
+    let cmake_prefix_path = format!("{};{}", qt_path_fwd, sdk_current_str);
+
+    // Build QML_IMPORT_PATH parts and package dir variables
+    let mut qml_parts: Vec<String> = Vec::new();
+    let mut extra_cache_vars: Vec<(String, String)> = Vec::new();
+
+    for (name, comp) in &dev_config.components {
+        if comp.mode != ComponentMode::Source {
+            continue;
+        }
+        // Add QML paths from linked components
+        if let Some(qml) = &comp.qml {
+            let qml_fwd = qml.replace('\\', "/");
+            if !qml_parts.contains(&qml_fwd) {
+                qml_parts.push(qml_fwd);
+            }
+        }
+        // Add package directory for library components
+        if let Some(var_name) = component_cmake_dir_var(name) {
+            // Derive build root from component's lib or headers path
+            let build_root = comp
+                .lib
+                .as_ref()
+                .and_then(|p| std::path::Path::new(p).parent().map(|pp| pp.to_string_lossy().replace('\\', "/")))
+                .or_else(|| {
+                    comp.headers.as_ref().and_then(|p| {
+                        std::path::Path::new(p)
+                            .parent()
+                            .map(|pp| pp.to_string_lossy().replace('\\', "/"))
+                    })
+                });
+            if let Some(root) = build_root {
+                extra_cache_vars.push((var_name.to_string(), root));
+            }
+        }
+    }
+
+    // Add SDK qml and Qt qml
+    qml_parts.push(format!("{}/qml", sdk_current_str));
+    qml_parts.push(format!("{}/qml", qt_path_fwd));
+    let qml_import_path = qml_parts.join(";");
+
+    // Build JSON using serde_json
+    let mut dev_cache = serde_json::Map::new();
+    dev_cache.insert("CMAKE_BUILD_TYPE".into(), serde_json::Value::String("Debug".into()));
+    dev_cache.insert("CMAKE_C_COMPILER".into(), serde_json::Value::String(gcc.clone()));
+    dev_cache.insert("CMAKE_CXX_COMPILER".into(), serde_json::Value::String(gpp.clone()));
+    dev_cache.insert("CMAKE_PREFIX_PATH".into(), serde_json::Value::String(cmake_prefix_path.clone()));
+    dev_cache.insert("CMAKE_EXPORT_COMPILE_COMMANDS".into(), serde_json::Value::String("ON".into()));
+    dev_cache.insert("QML_IMPORT_PATH".into(), serde_json::Value::String(qml_import_path.clone()));
+
+    for (var_name, dir_path) in &extra_cache_vars {
+        dev_cache.insert(var_name.clone(), serde_json::Value::String(dir_path.clone()));
+    }
+
+    let mut release_cache = serde_json::Map::new();
+    release_cache.insert("CMAKE_BUILD_TYPE".into(), serde_json::Value::String("Release".into()));
+    release_cache.insert("CMAKE_C_COMPILER".into(), serde_json::Value::String(gcc));
+    release_cache.insert("CMAKE_CXX_COMPILER".into(), serde_json::Value::String(gpp));
+    release_cache.insert("CMAKE_PREFIX_PATH".into(), serde_json::Value::String(cmake_prefix_path));
+    release_cache.insert("CMAKE_EXPORT_COMPILE_COMMANDS".into(), serde_json::Value::String("ON".into()));
+    release_cache.insert("QML_IMPORT_PATH".into(), serde_json::Value::String(qml_import_path));
+
+    for (var_name, dir_path) in &extra_cache_vars {
+        release_cache.insert(var_name.clone(), serde_json::Value::String(dir_path.clone()));
+    }
+
+    let presets = serde_json::json!({
+        "version": 6,
+        "configurePresets": [
+            {
+                "name": "dev",
+                "displayName": "MPF Dev",
+                "generator": "Ninja",
+                "binaryDir": "${sourceDir}/build",
+                "cacheVariables": serde_json::Value::Object(dev_cache)
+            },
+            {
+                "name": "release",
+                "displayName": "MPF Release",
+                "generator": "Ninja",
+                "binaryDir": "${sourceDir}/build-release",
+                "cacheVariables": serde_json::Value::Object(release_cache)
+            }
+        ],
+        "buildPresets": [
+            {"name": "dev", "configurePreset": "dev"},
+            {"name": "release", "configurePreset": "release"}
+        ]
+    });
+
+    let output_path = cwd.join("CMakeUserPresets.json");
+    let content = serde_json::to_string_pretty(&presets)?;
+    fs::write(&output_path, &content)
+        .with_context(|| format!("Failed to write {}", output_path.display()))?;
+
+    println!("{} Generated {}", "✓".green(), output_path.display());
+    println!();
+    println!("  Presets: {}, {}", "dev".green(), "release".green());
+    println!();
+    println!("Usage:");
+    println!("  cmake --preset dev");
+    println!("  cmake --build build");
+
+    Ok(())
+}
+
 /// Run command: execute mpf-host with development overrides
 pub fn run(debug: bool, args: Vec<String>) -> Result<()> {
     let current = config::current_link();

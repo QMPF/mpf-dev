@@ -49,6 +49,9 @@ enum Commands {
     /// Print environment variables for manual shell setup
     Env,
     
+    /// Generate CMakeUserPresets.json for current project
+    Init,
+
     /// Run MPF host with development overrides
     Run {
         /// Enable debug mode
@@ -152,6 +155,7 @@ async fn main() -> Result<()> {
         Commands::Unlink { component } => commands::unlink(&component),
         Commands::Status => commands::status(),
         Commands::Env => commands::env_vars(),
+        Commands::Init => commands::init(),
         Commands::Run { debug, args } => commands::run(debug, args),
         Commands::Workspace { action } => match action {
             WorkspaceAction::Init { path } => commands::workspace_init(path),

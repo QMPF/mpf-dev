@@ -12,12 +12,11 @@ param(
 
 # Detect SDK location
 $SdkRoot = "$env:USERPROFILE\.mpf-sdk"
-$CurrentSdk = Get-Content "$SdkRoot\current.txt" -ErrorAction SilentlyContinue
-if (-not $CurrentSdk) {
+$SdkPath = "$SdkRoot\current"
+if (-not (Test-Path $SdkPath)) {
     Write-Host "Error: No SDK installed. Run 'mpf-dev setup' first." -ForegroundColor Red
     return
 }
-$SdkPath = "$SdkRoot\$CurrentSdk"
 
 # Set CMAKE_PREFIX_PATH
 $env:CMAKE_PREFIX_PATH = "$QtPath;$SdkPath"

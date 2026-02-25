@@ -12,12 +12,11 @@ if "%QT_PATH%"=="" set "QT_PATH=C:\Qt\6.8.3\mingw_64"
 
 REM Find SDK
 set "SDK_ROOT=%USERPROFILE%\.mpf-sdk"
-if not exist "%SDK_ROOT%\current.txt" (
+set "SDK_PATH=%SDK_ROOT%\current"
+if not exist "%SDK_PATH%" (
     echo Error: No SDK installed. Run 'mpf-dev setup' first.
     exit /b 1
 )
-set /p CURRENT_SDK=<"%SDK_ROOT%\current.txt"
-set "SDK_PATH=%SDK_ROOT%\%CURRENT_SDK%"
 
 REM Set environment variables (persistent for this session)
 endlocal & (
