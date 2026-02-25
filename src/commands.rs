@@ -274,12 +274,8 @@ pub fn link_plugin(name: &str, path: &str) -> Result<()> {
     }));
     
     // Auto-derive paths from plugin build output
-    let plugins_mpf_path = abs_path.join("plugins").join("mpf");
-    let lib_path = if plugins_mpf_path.exists() {
-        normalize_path(plugins_mpf_path)
-    } else {
-        normalize_path(abs_path.join("plugins"))
-    };
+    // Uses build/plugins — matches CMakeLists.txt template, SDK install, and workspace layout
+    let lib_path = normalize_path(abs_path.join("plugins"));
     let qml_path = normalize_path(abs_path.join("qml"));
     let plugin_path = normalize_path(abs_path.clone());
     
@@ -479,14 +475,8 @@ pub fn link(
             cwd.join(plugin_path)
         }));
         
-        // Check for plugins/mpf subdirectory (common CMake output structure)
-        // If it exists, use it; otherwise use plugins/ directly
-        let plugins_mpf_path = abs_plugin_root.join("plugins").join("mpf");
-        let lib_path = if plugins_mpf_path.exists() {
-            normalize_path(plugins_mpf_path)
-        } else {
-            normalize_path(abs_plugin_root.join("plugins"))
-        };
+        // Uses build/plugins — matches CMakeLists.txt template, SDK install, and workspace layout
+        let lib_path = normalize_path(abs_plugin_root.join("plugins"));
         let qml_path = normalize_path(abs_plugin_root.join("qml"));
         
         println!(
