@@ -11,14 +11,14 @@ MPF 开发环境 CLI 工具 - 管理 SDK 版本、组件注册、项目初始化
 
 **Linux:**
 ```bash
-curl -LO https://github.com/dyzdyz010/mpf-dev/releases/latest/download/mpf-dev-linux-x86_64.tar.gz
+curl -LO https://github.com/QMPF/mpf-dev/releases/latest/download/mpf-dev-linux-x86_64.tar.gz
 tar xzf mpf-dev-linux-x86_64.tar.gz
 sudo mv mpf-dev /usr/local/bin/
 ```
 
 **从源码:**
 ```bash
-cargo install --git https://github.com/dyzdyz010/mpf-dev
+cargo install --git https://github.com/QMPF/mpf-dev
 ```
 
 ## 快速入门

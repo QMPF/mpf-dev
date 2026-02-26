@@ -2,10 +2,10 @@
 name = "mpf-dev"
 version = "0.2.2"
 edition = "2021"
-authors = ["dyzdyz010"]
+authors = ["QMPF"]
 description = "MPF Development Environment CLI Tool"
 license = "MIT"
-repository = "https://github.com/dyzdyz010/mpf-dev"
+repository = "https://github.com/QMPF/mpf-dev"
 keywords = ["mpf", "qt", "development", "cli"]
 categories = ["development-tools"]
 

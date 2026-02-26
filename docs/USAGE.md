@@ -88,7 +88,7 @@ MPF (Modular Plugin Framework) 是一个基于 Qt 6 的模块化插件框架。`
 **Windows:**
 ```powershell
 # 从 GitHub Releases 下载
-Invoke-WebRequest -Uri "https://github.com/dyzdyz010/mpf-dev/releases/latest/download/mpf-dev-windows-x86_64.zip" -OutFile mpf-dev.zip
+Invoke-WebRequest -Uri "https://github.com/QMPF/mpf-dev/releases/latest/download/mpf-dev-windows-x86_64.zip" -OutFile mpf-dev.zip
 Expand-Archive mpf-dev.zip -DestinationPath C:\Tools\mpf-dev
 
 # 添加到 PATH（永久）
@@ -97,14 +97,14 @@ Expand-Archive mpf-dev.zip -DestinationPath C:\Tools\mpf-dev
 
 **Linux:**
 ```bash
-curl -LO https://github.com/dyzdyz010/mpf-dev/releases/latest/download/mpf-dev-linux-x86_64.tar.gz
+curl -LO https://github.com/QMPF/mpf-dev/releases/latest/download/mpf-dev-linux-x86_64.tar.gz
 tar xzf mpf-dev-linux-x86_64.tar.gz
 sudo mv mpf-dev /usr/local/bin/
 ```
 
 **从源码编译:**
 ```bash
-cargo install --git https://github.com/dyzdyz010/mpf-dev
+cargo install --git https://github.com/QMPF/mpf-dev
 ```
 
 ### 2.3 安装 SDK
@@ -331,7 +331,7 @@ mpf-dev workspace run
 mpf-dev setup
 
 # 2. 克隆或创建插件项目
-git clone https://github.com/dyzdyz010/mpf-plugin-orders
+git clone https://github.com/QMPF/mpf-plugin-orders
 cd mpf-plugin-orders
 
 # 3. 初始化项目（生成 CMakeUserPresets.json）

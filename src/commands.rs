@@ -13,7 +13,7 @@ use crate::config::{
 };
 use crate::LinkAction;
 
-const GITHUB_REPO: &str = "dyzdyz010/mpf-release";
+const GITHUB_REPO: &str = "QMPF/mpf-release";
 
 /// Normalize a path by removing .\ and .. components
 fn normalize_path(p: PathBuf) -> String {
@@ -1114,12 +1114,12 @@ pub fn run(debug: bool, args: Vec<String>) -> Result<()> {
 // =============================================================================
 
 const WORKSPACE_REPOS: &[(&str, &str)] = &[
-    ("mpf-sdk", "https://github.com/dyzdyz010/mpf-sdk.git"),
-    ("mpf-ui-components", "https://github.com/dyzdyz010/mpf-ui-components.git"),
-    ("mpf-http-client", "https://github.com/dyzdyz010/mpf-http-client.git"),
-    ("mpf-host", "https://github.com/dyzdyz010/mpf-host.git"),
-    ("mpf-plugin-orders", "https://github.com/dyzdyz010/mpf-plugin-orders.git"),
-    ("mpf-plugin-rules", "https://github.com/dyzdyz010/mpf-plugin-rules.git"),
+    ("mpf-sdk", "https://github.com/QMPF/mpf-sdk.git"),
+    ("mpf-ui-components", "https://github.com/QMPF/mpf-ui-components.git"),
+    ("mpf-http-client", "https://github.com/QMPF/mpf-http-client.git"),
+    ("mpf-host", "https://github.com/QMPF/mpf-host.git"),
+    ("mpf-plugin-orders", "https://github.com/QMPF/mpf-plugin-orders.git"),
+    ("mpf-plugin-rules", "https://github.com/QMPF/mpf-plugin-rules.git"),
 ];
 
 /// Find workspace root by looking for .mpf-workspace marker
