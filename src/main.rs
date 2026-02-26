@@ -50,7 +50,11 @@ enum Commands {
     Env,
     
     /// Generate CMakeUserPresets.json for current project
-    Init,
+    Init {
+        /// Also delete the entire build/ directory
+        #[arg(long)]
+        clean: bool,
+    },
 
     /// Run MPF host with development overrides
     Run {
@@ -155,7 +159,7 @@ async fn main() -> Result<()> {
         Commands::Unlink { component } => commands::unlink(&component),
         Commands::Status => commands::status(),
         Commands::Env => commands::env_vars(),
-        Commands::Init => commands::init(),
+        Commands::Init { clean } => commands::init(clean),
         Commands::Run { debug, args } => commands::run(debug, args),
         Commands::Workspace { action } => match action {
             WorkspaceAction::Init { path } => commands::workspace_init(path),

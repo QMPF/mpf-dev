@@ -879,7 +879,7 @@ fn component_cmake_dir_var(component_name: &str) -> Option<&'static str> {
 }
 
 /// Init command: generate CMakeUserPresets.json for the current project
-pub fn init() -> Result<()> {
+pub fn init(clean: bool) -> Result<()> {
     println!("{}", "MPF Project Init".bold().cyan());
 
     let cwd = env::current_dir()?;
@@ -887,6 +887,32 @@ pub fn init() -> Result<()> {
     // Verify CMakeLists.txt exists
     if !cwd.join("CMakeLists.txt").exists() {
         bail!("No CMakeLists.txt found in current directory. Run this from a CMake project root.");
+    }
+
+    // Clean CMake cache / build directory
+    let build_dir = cwd.join("build");
+    if clean {
+        // --clean: remove entire build directory
+        if build_dir.exists() {
+            fs::remove_dir_all(&build_dir)
+                .with_context(|| format!("Failed to remove {}", build_dir.display()))?;
+            println!("{} Removed {}", "✓".green(), build_dir.display());
+        }
+    } else {
+        // Default: only clear CMake cache files, keep compiled artifacts
+        let cache_file = build_dir.join("CMakeCache.txt");
+        let cmake_files_dir = build_dir.join("CMakeFiles");
+        let had_cache = cache_file.exists();
+        let had_cmake_files = cmake_files_dir.exists();
+        if had_cache {
+            fs::remove_file(&cache_file)?;
+        }
+        if had_cmake_files {
+            fs::remove_dir_all(&cmake_files_dir)?;
+        }
+        if had_cache || had_cmake_files {
+            println!("{} Cleared CMake cache in {}", "✓".green(), build_dir.display());
+        }
     }
 
     // Load dev.json for linked source components
