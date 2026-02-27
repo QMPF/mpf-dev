@@ -999,20 +999,44 @@ pub fn init(clean: bool) -> Result<()> {
         release_cache.insert(var_name.clone(), serde_json::Value::String(dir_path.clone()));
     }
 
+    // Check if CMakePresets.json exists; if not, generate a base one
+    let base_presets_path = cwd.join("CMakePresets.json");
+    let has_base_presets = base_presets_path.exists();
+    if !has_base_presets {
+        let base_presets = serde_json::json!({
+            "version": 6,
+            "configurePresets": [
+                {
+                    "name": "base",
+                    "hidden": true,
+                    "generator": "Ninja",
+                    "binaryDir": "${sourceDir}/build",
+                    "cacheVariables": {
+                        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+                    }
+                }
+            ]
+        });
+        let base_content = serde_json::to_string_pretty(&base_presets)?;
+        fs::write(&base_presets_path, &base_content)
+            .with_context(|| format!("Failed to write {}", base_presets_path.display()))?;
+        println!("{} Generated {}", "✓".green(), base_presets_path.display());
+        println!("  {} Commit this file to your repository", "→".cyan());
+    }
+
     let presets = serde_json::json!({
         "version": 6,
         "configurePresets": [
             {
                 "name": "dev",
+                "inherits": "base",
                 "displayName": "MPF Dev",
-                "generator": "Ninja",
-                "binaryDir": "${sourceDir}/build",
                 "cacheVariables": serde_json::Value::Object(dev_cache)
             },
             {
                 "name": "release",
+                "inherits": "base",
                 "displayName": "MPF Release",
-                "generator": "Ninja",
                 "binaryDir": "${sourceDir}/build-release",
                 "cacheVariables": serde_json::Value::Object(release_cache)
             }
