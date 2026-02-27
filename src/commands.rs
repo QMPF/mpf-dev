@@ -257,6 +257,7 @@ pub fn link_action(action: LinkAction) -> Result<()> {
         LinkAction::Plugin { name, path } => link_plugin(&name, &path),
         LinkAction::Host { path } => link_host(&path),
         LinkAction::Component { name, path } => link_component(&name, &path),
+        LinkAction::Sdk { path } => link_sdk(&path),
         LinkAction::Manual { name, lib, qml, plugin, headers, bin } => {
             link(&name, lib, qml, plugin, headers, bin, None)
         }
@@ -352,6 +353,63 @@ pub fn link_host(path: &str) -> Result<()> {
     dev_config.save()?;
     
     println!("{} Host linked", "✓".green());
+    Ok(())
+}
+
+/// Link a local SDK install directory for development
+///
+/// The path should point to the cmake install prefix of a locally built SDK,
+/// which must contain lib/cmake/MPF/MPFConfig.cmake and include/mpf/.
+/// This overrides ~/.mpf-sdk/current when generating CMakeUserPresets.json.
+pub fn link_sdk(path: &str) -> Result<()> {
+    let cwd = env::current_dir()?;
+    let install_path = PathBuf::from(path);
+    let abs_path = PathBuf::from(normalize_path(if install_path.is_absolute() {
+        install_path
+    } else {
+        cwd.join(install_path)
+    }));
+
+    // Validate: must contain lib/cmake/MPF/MPFConfig.cmake
+    let cmake_config = abs_path.join("lib").join("cmake").join("MPF").join("MPFConfig.cmake");
+    if !cmake_config.exists() {
+        bail!(
+            "Invalid SDK install path: {} not found.\n\
+             Make sure to run 'cmake --install build --prefix <path>' first.",
+            cmake_config.display()
+        );
+    }
+
+    // Validate: must contain include/mpf/
+    let include_dir = abs_path.join("include").join("mpf");
+    if !include_dir.exists() {
+        bail!(
+            "Invalid SDK install path: {} not found.",
+            include_dir.display()
+        );
+    }
+
+    let lib_path = normalize_path(abs_path.join("lib"));
+    let headers_path = normalize_path(abs_path.join("include"));
+
+    println!("{} Linking SDK", "→".cyan());
+    println!("  Install root: {}", abs_path.display());
+    println!("  lib (cmake configs): {}", lib_path);
+    println!("  headers: {}", headers_path);
+
+    let mut dev_config = DevConfig::load().unwrap_or_default();
+    dev_config.components.insert("sdk".to_string(), ComponentConfig {
+        mode: ComponentMode::Source,
+        lib: Some(lib_path),
+        qml: None,
+        plugin: None,
+        headers: Some(headers_path),
+        bin: None,
+    });
+    dev_config.save()?;
+
+    println!("{} SDK linked for local development", "✓".green());
+    println!("  Run '{}' in your projects to apply", "mpf-dev init".cyan());
     Ok(())
 }
 
@@ -628,6 +686,18 @@ pub fn status() -> Result<()> {
         println!("  Version: {}", v.green());
     } else {
         println!("  Version: {}", "not set".red());
+    }
+    if let Some(sdk_comp) = dev_config.components.get("sdk") {
+        if sdk_comp.mode == ComponentMode::Source {
+            if let Some(lib) = &sdk_comp.lib {
+                // Derive install root from lib path
+                let install_root = std::path::Path::new(lib.as_str())
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                println!("  Local: {} {}", install_root.green(), "(overrides current)".dimmed());
+            }
+        }
     }
     println!();
     
@@ -931,8 +1001,30 @@ pub fn init(clean: bool) -> Result<()> {
     let sdk_current = config::current_link();
     let sdk_current_str = sdk_current.to_string_lossy().replace('\\', "/");
 
-    // Build CMAKE_PREFIX_PATH
-    let cmake_prefix_path = format!("{};{}", qt_path_fwd, sdk_current_str);
+    // Build CMAKE_PREFIX_PATH — if SDK is linked locally, prepend it
+    let cmake_prefix_path = if let Some(sdk_comp) = dev_config.components.get("sdk") {
+        if sdk_comp.mode == ComponentMode::Source {
+            if let Some(lib_path) = &sdk_comp.lib {
+                // Derive install root from lib path (lib's parent = install prefix)
+                let sdk_local = std::path::Path::new(lib_path)
+                    .parent()
+                    .map(|p| p.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_default();
+                if !sdk_local.is_empty() {
+                    println!("  {} Using local SDK: {}", "→".cyan(), sdk_local);
+                    format!("{};{};{}", sdk_local, qt_path_fwd, sdk_current_str)
+                } else {
+                    format!("{};{}", qt_path_fwd, sdk_current_str)
+                }
+            } else {
+                format!("{};{}", qt_path_fwd, sdk_current_str)
+            }
+        } else {
+            format!("{};{}", qt_path_fwd, sdk_current_str)
+        }
+    } else {
+        format!("{};{}", qt_path_fwd, sdk_current_str)
+    };
 
     // Build QML_IMPORT_PATH parts and package dir variables
     let mut qml_parts: Vec<String> = Vec::new();

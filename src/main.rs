@@ -97,6 +97,12 @@ enum LinkAction {
         /// Path to component build output directory
         path: String,
     },
+
+    /// Link a local SDK install for development (overrides ~/.mpf-sdk/current)
+    Sdk {
+        /// Path to SDK cmake install prefix (must contain lib/cmake/MPF/)
+        path: String,
+    },
     
     /// Link with manual path specification (advanced)
     Manual {
