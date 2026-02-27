@@ -196,6 +196,30 @@ cd mpf-ui-components
 mpf-dev link component ui-components ./build
 ```
 
+#### `mpf-dev link sdk <install-path>`
+
+注册本地 SDK 安装目录，使 `mpf-dev init` 将其前置到 `CMAKE_PREFIX_PATH`，从而让 `find_package(MPF)` 优先找到本地修改的 SDK。
+
+```bash
+# 在 mpf-sdk 源码目录中构建并安装
+cd mpf-sdk
+cmake -B build
+cmake --build build
+cmake --install build --prefix ./install
+
+# 链接本地 SDK
+mpf-dev link sdk ./install
+```
+
+**路径验证：** 必须包含 `lib/cmake/MPF/MPFConfig.cmake` 和 `include/mpf/`。
+
+**效果：** 后续在其他项目执行 `mpf-dev init` 时，`CMAKE_PREFIX_PATH` 会变为：
+```
+<local-sdk-install>;C:/Qt/6.8.3/mingw_64;C:/Users/xxx/.mpf-sdk/current
+```
+
+取消链接：`mpf-dev unlink sdk`
+
 #### `mpf-dev link manual <name> [--lib PATH] [--qml PATH] [--plugin PATH] [--headers PATH] [--bin PATH]`
 
 手动指定各路径，用于非标准目录结构。
@@ -234,7 +258,7 @@ mpf-dev init --clean           # 生成 preset，删除整个 build/ 目录
 
 **生成的 preset 内容：**
 - `CMAKE_C_COMPILER` / `CMAKE_CXX_COMPILER`：自动检测的 MinGW 路径
-- `CMAKE_PREFIX_PATH`：Qt + SDK current
+- `CMAKE_PREFIX_PATH`：Qt + SDK current（若链接了本地 SDK 则前置本地路径）
 - `QML_IMPORT_PATH`：已注册组件 QML 路径 + SDK QML + Qt QML
 - 已注册库组件的 `<PackageName>_DIR` 变量
 
@@ -246,18 +270,32 @@ mpf-dev init --clean           # 生成 preset，删除整个 build/ 目录
 $ mpf-dev status
 MPF Development Environment Status
 
-SDK:
+📦 SDK
   Root: C:\Users\dyz\.mpf-sdk
-  Current version: v1.0.26
-  Config: C:\Users\dyz\.mpf-sdk\dev.json
+  Version: v1.0.26
 
-Components:
-  host [source]
-    bin: C:\Users\dyz\...\mpf-host\build\bin
+🖥️  Host
+  ✓ bin: C:\Users\dyz\...\mpf-host\build\bin
     qml: C:\Users\dyz\...\mpf-host\build\qml
-  orders [source]
+
+🔌 Plugins
+  ✓ orders
     lib: C:\Users\dyz\...\mpf-plugin-orders\build\plugins
     qml: C:\Users\dyz\...\mpf-plugin-orders\build\qml
+
+📚 Libraries
+  ○ None linked
+
+📝 Config
+  C:\Users\dyz\.mpf-sdk\dev.json
+```
+
+如果链接了本地 SDK，会显示：
+```
+📦 SDK
+  Root: C:\Users\dyz\.mpf-sdk
+  Version: v1.0.26
+  Local: C:\...\mpf-sdk\install (overrides current)
 ```
 
 ### `mpf-dev env`
@@ -372,7 +410,37 @@ cmake --build build
 mpf-dev run
 ```
 
-### 4.3 Host + 插件联合开发
+### 4.3 SDK 本地开发
+
+适用于：修改 mpf-sdk（foundation-sdk）头文件或 CMake 配置，需要其他组件使用修改后的 SDK 而非 `~/.mpf-sdk/current` 中的预安装版本。
+
+```bash
+# 1. 克隆并修改 SDK
+git clone https://github.com/QMPF/mpf-sdk
+cd mpf-sdk
+# 修改 include/mpf/ 中的头文件...
+
+# 2. 构建并安装到本地目录
+cmake -B build
+cmake --build build
+cmake --install build --prefix ./install
+
+# 3. 链接本地 SDK
+mpf-dev link sdk ./install
+
+# 4. 在其他项目中重新 init
+cd ../mpf-plugin-orders
+mpf-dev init          # CMAKE_PREFIX_PATH 自动前置本地 SDK
+cmake --preset dev
+cmake --build build
+
+# 5. 完成后取消链接
+mpf-dev unlink sdk
+```
+
+> **注意：** 链接的是 SDK 的 **cmake install 输出目录**（包含 `lib/cmake/MPF/` 和 `include/mpf/`），而非源码目录。每次修改 SDK 头文件后需重新执行步骤 2（构建 + 安装）。
+
+### 4.4 Host + 插件联合开发
 
 适用于：同时修改 Host 和插件。
 
@@ -395,7 +463,7 @@ mpf-dev link plugin orders ./build
 mpf-dev run
 ```
 
-### 4.4 全源码工作区
+### 4.5 全源码工作区
 
 适用于：需要同时修改所有组件，或初次搭建完整开发环境。
 
@@ -406,7 +474,7 @@ mpf-dev workspace build        # 构建全部
 mpf-dev workspace run          # 运行
 ```
 
-### 4.5 Qt Creator 调试
+### 4.6 Qt Creator 调试
 
 mpf-host 在启动时自动读取 `~/.mpf-sdk/dev.json`，发现已注册的源码组件路径。因此在 Qt Creator 中直接调试时**无需手动配置环境变量**。
 
@@ -487,19 +555,27 @@ mpf-dev init    # 重新生成
 {
   "sdk_version": "v1.0.26",
   "components": {
+    "sdk": {
+      "mode": "source",
+      "lib": "C:\\...\\mpf-sdk\\install\\lib",
+      "headers": "C:\\...\\mpf-sdk\\install\\include"
+    },
     "host": {
       "mode": "source",
-      "qml": "C:\\Users\\dyz\\...\\mpf-host\\build\\qml",
-      "bin": "C:\\Users\\dyz\\...\\mpf-host\\build\\bin"
+      "qml": "C:\\...\\mpf-host\\build\\qml",
+      "bin": "C:\\...\\mpf-host\\build\\bin"
     },
-    "orders": {
+    "plugin-order": {
       "mode": "source",
-      "lib": "C:\\Users\\dyz\\...\\mpf-plugin-orders\\build\\plugins",
-      "qml": "C:\\Users\\dyz\\...\\mpf-plugin-orders\\build\\qml"
+      "lib": "C:\\...\\mpf-plugin-orders\\build\\plugins",
+      "qml": "C:\\...\\mpf-plugin-orders\\build\\qml",
+      "plugin": "C:\\...\\mpf-plugin-orders\\build"
     }
   }
 }
 ```
+
+> **注意：** `sdk` 条目由 `mpf-dev link sdk` 管理，其 `lib` 字段的父目录即为 SDK 安装根目录，会被前置到 `CMAKE_PREFIX_PATH`。
 
 ### 运行时发现
 
@@ -543,7 +619,7 @@ target_link_libraries(my-plugin PRIVATE
 )
 ```
 
-`CMAKE_PREFIX_PATH` 由 `mpf-dev init` 自动配置，包含 Qt 和 SDK 路径。
+`CMAKE_PREFIX_PATH` 由 `mpf-dev init` 自动配置，包含 Qt 和 SDK 路径。如果通过 `mpf-dev link sdk` 链接了本地 SDK，其路径会被前置到 `CMAKE_PREFIX_PATH` 最前面，使 `find_package(MPF)` 优先找到本地版本。
 
 ### CMakeUserPresets.json
 
@@ -556,13 +632,12 @@ target_link_libraries(my-plugin PRIVATE
     {
       "name": "dev",
       "displayName": "MPF Dev",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build",
+      "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_C_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/gcc.exe",
         "CMAKE_CXX_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/g++.exe",
-        "CMAKE_PREFIX_PATH": "C:/Qt/6.8.3/mingw_64;C:/Users/dyz/.mpf-sdk/current",
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.8.3/mingw_64;C:/Users/xxx/.mpf-sdk/current",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "QML_IMPORT_PATH": "...linked_qml...;.../current/qml;.../Qt/qml"
       }
@@ -570,7 +645,7 @@ target_link_libraries(my-plugin PRIVATE
     {
       "name": "release",
       "displayName": "MPF Release",
-      "generator": "Ninja",
+      "inherits": "base",
       "binaryDir": "${sourceDir}/build-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
@@ -653,6 +728,27 @@ cmake --build build                 # 重新构建
 ### Q: Windows 上 ui-components 链接导致崩溃
 
 **这是已知设计约束。** 插件**不得**链接 `MPF::mpf-ui-components`，因为跨 DLL 堆分配会导致崩溃。ui-components 由 Host 加载，插件通过 `QML_IMPORT_PATH` 在运行时访问。
+
+### Q: 如何使用本地修改的 SDK？
+
+```bash
+cd mpf-sdk
+# 修改头文件...
+cmake -B build && cmake --build build
+cmake --install build --prefix ./install
+mpf-dev link sdk ./install
+
+# 在其他项目中
+cd ../mpf-plugin-orders
+mpf-dev init           # 自动前置本地 SDK 到 CMAKE_PREFIX_PATH
+cmake --preset dev
+cmake --build build
+
+# 完成后
+mpf-dev unlink sdk
+```
+
+链接的必须是 `cmake --install` 的输出目录（包含 `lib/cmake/MPF/` 和 `include/mpf/`），而非源码目录。
 
 ### Q: 从 Qt Creator 调试 Host，插件从 SDK 加载而非源码
 

@@ -52,6 +52,7 @@ mpf-dev run
 | `mpf-dev link plugin <name> <path>` | 注册插件构建输出 |
 | `mpf-dev link host <path>` | 注册 Host 构建输出 |
 | `mpf-dev link component <name> <path>` | 注册库组件构建输出 |
+| `mpf-dev link sdk <install-path>` | 注册本地 SDK 安装目录（覆盖 current） |
 | `mpf-dev unlink <component\|all>` | 取消组件注册 |
 | `mpf-dev init [--clean]` | 生成 CMakeUserPresets.json + 清除 CMake 缓存 |
 | `mpf-dev status` | 查看开发环境状态 |
