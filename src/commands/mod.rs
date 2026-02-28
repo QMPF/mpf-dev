@@ -53,10 +53,15 @@ fn normalize_path(p: PathBuf) -> String {
 ///
 /// Returns Some(normalized_path) if a CMakeLists.txt is found, None otherwise.
 fn infer_project_root(build_path: &std::path::Path) -> Option<String> {
-    // Try parent of build path (convention: <source>/build)
-    if let Some(parent) = build_path.parent() {
-        if parent.join("CMakeLists.txt").exists() {
-            return Some(normalize_path(parent.to_path_buf()));
+    // Walk up to 3 levels to find a directory containing CMakeLists.txt
+    // Handles both <source>/build and <source>/build/install conventions
+    let mut current = Some(build_path);
+    for _ in 0..3 {
+        current = current.and_then(|p| p.parent());
+        if let Some(dir) = current {
+            if dir.join("CMakeLists.txt").exists() {
+                return Some(normalize_path(dir.to_path_buf()));
+            }
         }
     }
     // Try CWD

@@ -43,7 +43,9 @@ fn generate_user_presets(
     let sdk_current_str = sdk_current.to_string_lossy().replace('\\', "/");
 
     // Build CMAKE_PREFIX_PATH — if SDK is linked locally, prepend it
-    let cmake_prefix_path = if let Some(sdk_comp) = dev_config.components.get("sdk") {
+    let mut prefix_parts: Vec<String> = Vec::new();
+
+    if let Some(sdk_comp) = dev_config.components.get("sdk") {
         if sdk_comp.mode == ComponentMode::Source {
             if let Some(lib_path) = &sdk_comp.lib {
                 let sdk_local = std::path::Path::new(lib_path)
@@ -51,19 +53,40 @@ fn generate_user_presets(
                     .map(|p| p.to_string_lossy().replace('\\', "/"))
                     .unwrap_or_default();
                 if !sdk_local.is_empty() {
-                    format!("{};{};{}", sdk_local, qt_path_fwd, sdk_current_str)
-                } else {
-                    format!("{};{}", qt_path_fwd, sdk_current_str)
+                    prefix_parts.push(sdk_local);
                 }
-            } else {
-                format!("{};{}", qt_path_fwd, sdk_current_str)
             }
-        } else {
-            format!("{};{}", qt_path_fwd, sdk_current_str)
         }
-    } else {
-        format!("{};{}", qt_path_fwd, sdk_current_str)
-    };
+    }
+
+    prefix_parts.push(qt_path_fwd.to_string());
+    prefix_parts.push(sdk_current_str.clone());
+
+    // Append linked library component install paths (not plugins, not host)
+    for (name, comp) in &dev_config.components {
+        if comp.mode != ComponentMode::Source {
+            continue;
+        }
+        // Skip special components and those with dedicated CMake _DIR variables
+        if name == "sdk" || name == "host" || name.starts_with("plugin-") {
+            continue;
+        }
+        if component_cmake_dir_var(name).is_some() {
+            continue;
+        }
+        // Add lib parent as cmake prefix path (the install root)
+        if let Some(lib_path) = &comp.lib {
+            let lib_parent = std::path::Path::new(lib_path)
+                .parent()
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_default();
+            if !lib_parent.is_empty() && !prefix_parts.contains(&lib_parent) {
+                prefix_parts.push(lib_parent);
+            }
+        }
+    }
+
+    let cmake_prefix_path = prefix_parts.join(";");
 
     // Build QML_IMPORT_PATH parts and package dir variables
     let mut qml_parts: Vec<String> = Vec::new();
