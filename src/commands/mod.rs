@@ -192,6 +192,19 @@ fn build_env_paths() -> Result<(String, String, String, String, String, PathBuf,
             if let Some(lib) = &comp.lib {
                 lib_paths.push(lib.clone());
 
+                // On Windows, DLLs may be in a sibling bin/ directory
+                // (MinGW installs: RUNTIME→bin/, ARCHIVE→lib/)
+                let lib_path = std::path::Path::new(lib.as_str());
+                if let Some(parent) = lib_path.parent() {
+                    let sibling_bin = parent.join("bin");
+                    if sibling_bin.is_dir() {
+                        let bin_str = sibling_bin.to_string_lossy().replace('\\', "/");
+                        if !lib_paths.contains(&bin_str) {
+                            lib_paths.push(bin_str);
+                        }
+                    }
+                }
+
                 // For plugin components (not host/sdk), also add to MPF_PLUGIN_PATH
                 if name != "host" && name != "sdk" {
                     mpf_plugin_paths.push(lib.clone());
@@ -219,8 +232,9 @@ fn build_env_paths() -> Result<(String, String, String, String, String, PathBuf,
         }
     }
 
-    // SDK paths as fallback
+    // SDK paths as fallback (include both lib/ and bin/ for Windows DLL discovery)
     lib_paths.push(sdk.join("lib").to_string_lossy().to_string());
+    lib_paths.push(sdk.join("bin").to_string_lossy().to_string());
     qml_paths.push(sdk.join("qml").to_string_lossy().to_string());
     plugin_paths.push(sdk.join("plugins").to_string_lossy().to_string());
 
