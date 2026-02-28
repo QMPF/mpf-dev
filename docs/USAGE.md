@@ -56,11 +56,24 @@ MPF (Modular Plugin Framework) 是一个基于 Qt 6 的模块化插件框架。`
   └─────────────┘ └─────────────┘ └─────────┘
 ```
 
+### 组件仓库
+
+| 组件 | 仓库 | 说明 |
+|------|------|------|
+| SDK | [mpf-sdk](https://github.com/QMPF/mpf-sdk) | 纯头文件接口库 |
+| HTTP Client | [mpf-http-client](https://github.com/QMPF/mpf-http-client) | HTTP 客户端库 |
+| UI Components | [mpf-ui-components](https://github.com/QMPF/mpf-ui-components) | QML 组件库 + C++ 工具类 |
+| Host | [mpf-host](https://github.com/QMPF/mpf-host) | 宿主应用 |
+| Orders Plugin | [mpf-plugin-orders](https://github.com/QMPF/mpf-plugin-orders) | 订单管理示例插件 |
+| Rules Plugin | [mpf-plugin-rules](https://github.com/QMPF/mpf-plugin-rules) | 规则管理示例插件 |
+| Dev CLI | [mpf-dev](https://github.com/QMPF/mpf-dev) | 开发环境 CLI 工具（Rust） |
+| Release | [mpf-release](https://github.com/QMPF/mpf-release) | 集成构建与发布 |
+
 ### 目录结构
 
 ```
 ~/.mpf-sdk/
-├── v1.0.26/                 # SDK 版本目录
+├── v1.0.33/                 # SDK 版本目录
 │   ├── bin/mpf-host         # 宿主可执行文件
 │   ├── lib/                 # 所有组件库
 │   ├── include/             # 所有组件头文件
@@ -69,7 +82,7 @@ MPF (Modular Plugin Framework) 是一个基于 Qt 6 的模块化插件框架。`
 │   └── qml/                 # QML 模块
 │       ├── MPF/Components/  # ui-components
 │       └── MPF/Host/        # host QML
-├── current -> v1.0.26       # 指向当前版本的 junction/symlink
+├── current -> v1.0.33       # 指向当前版本的 junction/symlink
 └── dev.json                 # 开发配置（已注册的源码组件）
 ```
 
@@ -114,7 +127,7 @@ cargo install --git https://github.com/QMPF/mpf-dev
 mpf-dev setup
 
 # 安装指定版本
-mpf-dev setup --version v1.0.26
+mpf-dev setup --version v1.0.33
 
 # 验证
 mpf-dev status
@@ -130,7 +143,7 @@ mpf-dev status
 
 ```bash
 mpf-dev setup                      # 安装最新版本
-mpf-dev setup --version v1.0.26    # 安装指定版本
+mpf-dev setup --version v1.0.33    # 安装指定版本
 ```
 
 SDK 安装到 `~/.mpf-sdk/<version>/`，并自动设为当前版本。
@@ -142,8 +155,9 @@ SDK 安装到 `~/.mpf-sdk/<version>/`，并自动设为当前版本。
 ```bash
 $ mpf-dev versions
 Installed SDK versions:
-  * v1.0.26 (current)
-    v1.0.25
+  * v1.0.33 (current)
+    v1.0.32
+    v1.0.29
 ```
 
 ### `mpf-dev use <version>`
@@ -151,7 +165,7 @@ Installed SDK versions:
 切换当前使用的 SDK 版本。
 
 ```bash
-mpf-dev use v1.0.25
+mpf-dev use v1.0.32
 ```
 
 实现方式：更新 `~/.mpf-sdk/current` junction（Windows）或 symlink（Unix）指向目标版本目录。
@@ -159,6 +173,8 @@ mpf-dev use v1.0.25
 ### `mpf-dev link` — 注册源码组件
 
 将本地构建产物注册到 `dev.json`，使 host 在运行时优先加载这些路径。
+
+> **自动扩散：** 每次 `link` 后，mpf-dev 会自动为所有已注册项目重新生成 `CMakeUserPresets.json` 并清除 CMake 缓存，确保新组件路径立即在所有项目中生效。操作完成后会提示重启 IDE。
 
 #### `mpf-dev link plugin <name> <build-path>`
 
@@ -230,7 +246,7 @@ mpf-dev link manual my-lib --lib ./build/lib --qml ./build/qml --headers ./inclu
 
 ### `mpf-dev unlink <component>`
 
-取消组件的源码注册。
+取消组件的源码注册。取消后同样会自动重新生成所有已注册项目的 CMake preset。
 
 ```bash
 mpf-dev unlink orders          # 取消单个组件
@@ -251,6 +267,7 @@ mpf-dev init --clean           # 生成 preset，删除整个 build/ 目录
 - 生成包含 `dev` 和 `release` 两个配置的 `CMakeUserPresets.json`
 - 删除 `build/CMakeCache.txt` 和 `build/CMakeFiles/`（确保新 preset 干净生效）
 - 读取 `dev.json` 中的已注册组件，自动添加 QML 路径和 CMake 包路径
+- 将项目根目录记录到 `dev.json`（供后续 link/unlink 自动扩散使用）
 
 **`--clean` 行为：**
 - 删除整个 `build/` 目录
@@ -262,6 +279,8 @@ mpf-dev init --clean           # 生成 preset，删除整个 build/ 目录
 - `QML_IMPORT_PATH`：已注册组件 QML 路径 + SDK QML + Qt QML
 - 已注册库组件的 `<PackageName>_DIR` 变量
 
+> **提示：** 通常只需在首次使用项目时手动执行 `mpf-dev init`。后续通过 `link` / `unlink` 变更组件时，所有项目的 preset 会自动更新。
+
 ### `mpf-dev status`
 
 显示当前开发环境状态。
@@ -272,7 +291,7 @@ MPF Development Environment Status
 
 📦 SDK
   Root: C:\Users\dyz\.mpf-sdk
-  Version: v1.0.26
+  Version: v1.0.33
 
 🖥️  Host
   ✓ bin: C:\Users\dyz\...\mpf-host\build\bin
@@ -284,7 +303,9 @@ MPF Development Environment Status
     qml: C:\Users\dyz\...\mpf-plugin-orders\build\qml
 
 📚 Libraries
-  ○ None linked
+  ✓ ui-components
+    lib: C:\Users\dyz\...\mpf-ui-components\build
+    qml: C:\Users\dyz\...\mpf-ui-components\build\qml
 
 📝 Config
   C:\Users\dyz\.mpf-sdk\dev.json
@@ -294,7 +315,7 @@ MPF Development Environment Status
 ```
 📦 SDK
   Root: C:\Users\dyz\.mpf-sdk
-  Version: v1.0.26
+  Version: v1.0.33
   Local: C:\...\mpf-sdk\install (overrides current)
 ```
 
@@ -379,7 +400,7 @@ mpf-dev init
 cmake --preset dev
 cmake --build build
 
-# 5. 注册插件到 dev.json
+# 5. 注册插件到 dev.json（所有已注册项目的 preset 自动更新）
 mpf-dev link plugin orders ./build
 
 # 6. 运行测试
@@ -399,16 +420,17 @@ mpf-dev init
 cmake --preset dev
 cmake --build build
 
-# 注册库组件
+# 注册库组件（所有已注册项目的 CMake preset 自动更新，无需手动 re-init）
 mpf-dev link component ui-components ./build
 
-# 在其他依赖此库的项目中重新 init 以更新路径
+# 重启 IDE 使新的 CMake 配置生效，然后重新构建依赖此库的项目
 cd ../mpf-plugin-orders
-mpf-dev init
 cmake --preset dev
 cmake --build build
 mpf-dev run
 ```
+
+> **注意：** `mpf-dev link` 会自动为所有已执行过 `init` 的项目重新生成 `CMakeUserPresets.json` 并清除 CMake 缓存。你只需重启 IDE 并重新构建即可。
 
 ### 4.3 SDK 本地开发
 
@@ -425,12 +447,11 @@ cmake -B build
 cmake --build build
 cmake --install build --prefix ./install
 
-# 3. 链接本地 SDK
+# 3. 链接本地 SDK（所有已注册项目的 CMAKE_PREFIX_PATH 自动更新）
 mpf-dev link sdk ./install
 
-# 4. 在其他项目中重新 init
+# 4. 重启 IDE，在其他项目中重新构建
 cd ../mpf-plugin-orders
-mpf-dev init          # CMAKE_PREFIX_PATH 自动前置本地 SDK
 cmake --preset dev
 cmake --build build
 
@@ -452,7 +473,7 @@ cmake --preset dev
 cmake --build build
 mpf-dev link host ./build
 
-# 注册插件
+# 注册插件（此时 Host 的 preset 也会自动更新）
 cd ../mpf-plugin-orders
 mpf-dev init
 cmake --preset dev
@@ -553,7 +574,7 @@ mpf-dev init    # 重新生成
 **示例：**
 ```json
 {
-  "sdk_version": "v1.0.26",
+  "sdk_version": "v1.0.33",
   "components": {
     "sdk": {
       "mode": "source",
@@ -563,19 +584,51 @@ mpf-dev init    # 重新生成
     "host": {
       "mode": "source",
       "qml": "C:\\...\\mpf-host\\build\\qml",
-      "bin": "C:\\...\\mpf-host\\build\\bin"
+      "bin": "C:\\...\\mpf-host\\build\\bin",
+      "root": "C:\\...\\mpf-host"
     },
-    "plugin-order": {
+    "plugin-orders": {
       "mode": "source",
       "lib": "C:\\...\\mpf-plugin-orders\\build\\plugins",
       "qml": "C:\\...\\mpf-plugin-orders\\build\\qml",
-      "plugin": "C:\\...\\mpf-plugin-orders\\build"
+      "plugin": "C:\\...\\mpf-plugin-orders\\build",
+      "root": "C:\\...\\mpf-plugin-orders"
+    },
+    "ui-components": {
+      "mode": "source",
+      "lib": "C:\\...\\mpf-ui-components\\build",
+      "qml": "C:\\...\\mpf-ui-components\\build\\qml",
+      "root": "C:\\...\\mpf-ui-components"
     }
   }
 }
 ```
 
-> **注意：** `sdk` 条目由 `mpf-dev link sdk` 管理，其 `lib` 字段的父目录即为 SDK 安装根目录，会被前置到 `CMAKE_PREFIX_PATH`。
+**字段说明：**
+- `mode` — 组件模式，`"source"` 表示源码开发
+- `lib` — 库文件目录（DLL/so 搜索路径）
+- `qml` — QML 模块目录
+- `plugin` — 插件构建根目录
+- `headers` — 头文件目录
+- `bin` — 可执行文件目录（仅 host）
+- `root` — 项目源码根目录（由 `link` 自动推断或 `init` 设置）。此字段使 `link`/`unlink` 操作能够自动为该项目重新生成 `CMakeUserPresets.json`
+
+> **注意：** `sdk` 条目由 `mpf-dev link sdk` 管理，其 `lib` 字段的父目录即为 SDK 安装根目录，会被前置到 `CMAKE_PREFIX_PATH`。SDK 没有 `root` 字段，因为它不是一个需要重新 init 的 CMake 项目。
+
+### 自动扩散机制
+
+当执行 `mpf-dev link` 或 `mpf-dev unlink` 时：
+
+1. 更新 `dev.json` 中的组件信息
+2. 遍历 `dev.json` 中所有带 `root` 字段的组件
+3. 对每个项目目录重新生成 `CMakeUserPresets.json`
+4. 清除每个项目的 `build/CMakeCache.txt` 和 `build/CMakeFiles/`
+5. 输出提示："Re-initialized N project(s). **Restart IDE** to reload CMake configuration."
+
+这意味着：
+- 注册新组件后，**不需要**在每个项目中手动执行 `mpf-dev init`
+- 新的 QML 路径和 CMake 包路径会立即出现在所有项目的 preset 中
+- **只需重启 IDE** 使新配置生效，然后重新构建
 
 ### 运行时发现
 
@@ -591,6 +644,14 @@ mpf-host 在启动时（`Application::setupPaths()`）自动读取 dev.json：
 - 从 Qt Creator 直接运行/调试时，Host 自动发现源码组件
 - 无需手动配置 `LD_LIBRARY_PATH`、`PATH`、`QML_IMPORT_PATH` 等环境变量
 - 与 `mpf-dev run` 等价的行为，但不需要通过 CLI 启动
+
+### QML 加载策略
+
+所有 MPF 组件的 QML 文件通过 `qt_add_qml_module` 内嵌到 DLL（qrc 资源）中。Qt 自动在 qmldir 中生成 `prefer` 指令，使 QML 引擎从 DLL 内的 qrc 加载而非文件系统。
+
+- **运行时**：QML 从 DLL 内嵌的 qrc 加载（高效、单文件分发）
+- **开发时**：`mpf-dev link` 使 host 找到本地构建的 DLL，从而加载其内嵌的 qrc
+- **Qt Creator 智能提示**：通过 `QML_IMPORT_PATH` 指向 build 目录中的 `.qml` 文件
 
 ### 插件侧 QML 发现
 
@@ -672,7 +733,7 @@ target_link_libraries(my-plugin PRIVATE
 ### 标准构建流程
 
 ```bash
-mpf-dev init                # 生成/更新 preset
+mpf-dev init                # 生成/更新 preset（仅首次或需要时）
 cmake --preset dev          # 配置
 cmake --build build         # 构建
 ```
@@ -712,8 +773,8 @@ export QT_DIR=/opt/Qt/6.8.3/gcc_64
 ### Q: 如何切换 SDK 版本？
 
 ```bash
-mpf-dev setup --version v1.0.25   # 安装新版本（如未安装）
-mpf-dev use v1.0.25               # 切换
+mpf-dev setup --version v1.0.32   # 安装新版本（如未安装）
+mpf-dev use v1.0.32               # 切换
 mpf-dev init                      # 重新生成 preset（路径已变）
 ```
 
@@ -738,9 +799,8 @@ cmake -B build && cmake --build build
 cmake --install build --prefix ./install
 mpf-dev link sdk ./install
 
-# 在其他项目中
+# 所有已注册项目自动更新，重启 IDE 后重新构建即可
 cd ../mpf-plugin-orders
-mpf-dev init           # 自动前置本地 SDK 到 CMAKE_PREFIX_PATH
 cmake --preset dev
 cmake --build build
 
@@ -753,3 +813,9 @@ mpf-dev unlink sdk
 ### Q: 从 Qt Creator 调试 Host，插件从 SDK 加载而非源码
 
 确保已执行 `mpf-dev link plugin <name> ./build`。Host 启动时读取 dev.json，自动发现源码构建的插件路径。使用 Qt Creator 的 "Application Output" 窗口查看 Host 的日志输出，确认加载路径。
+
+### Q: `link` 后其他项目需要做什么？
+
+无需手动操作。`mpf-dev link` 会自动为所有已执行过 `init` 的项目重新生成 `CMakeUserPresets.json` 并清除 CMake 缓存。你只需：
+1. 重启 IDE（使新的 CMake 配置生效）
+2. 重新构建项目
