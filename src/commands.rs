@@ -301,9 +301,11 @@ pub fn link_plugin(name: &str, path: &str) -> Result<()> {
         plugin: Some(plugin_path),
         headers: None,
         bin: None,
+        root: infer_project_root(&abs_path),
     });
     dev_config.save()?;
-    
+    reinit_all(&dev_config)?;
+
     println!("{} Plugin '{}' linked", "✓".green(), component_name);
     Ok(())
 }
@@ -349,9 +351,11 @@ pub fn link_host(path: &str) -> Result<()> {
         plugin: None,
         headers: None,
         bin: Some(bin_path),
+        root: infer_project_root(&abs_path),
     });
     dev_config.save()?;
-    
+    reinit_all(&dev_config)?;
+
     println!("{} Host linked", "✓".green());
     Ok(())
 }
@@ -405,11 +409,12 @@ pub fn link_sdk(path: &str) -> Result<()> {
         plugin: None,
         headers: Some(headers_path),
         bin: None,
+        root: None, // SDK has no project root to re-init
     });
     dev_config.save()?;
+    reinit_all(&dev_config)?;
 
     println!("{} SDK linked for local development", "✓".green());
-    println!("  Run '{}' in your projects to apply", "mpf-dev init".cyan());
     Ok(())
 }
 
@@ -459,9 +464,11 @@ pub fn link_component(name: &str, path: &str) -> Result<()> {
         plugin: None,
         headers: headers_path,
         bin: None,
+        root: infer_project_root(&abs_path),
     });
     dev_config.save()?;
-    
+    reinit_all(&dev_config)?;
+
     println!("{} Component '{}' linked", "✓".green(), name);
     Ok(())
 }
@@ -609,10 +616,12 @@ pub fn link(
         plugin: resolve(plugin),
         headers: resolve(headers),
         bin: final_bin,
+        root: None, // Manual link — user can run init to set root
     };
-    
+
     dev_config.components.insert(component.to_string(), comp_config.clone());
     dev_config.save()?;
+    reinit_all(&dev_config)?;
     
     println!(
         "{} Component '{}' linked for source development",
@@ -647,25 +656,28 @@ pub fn unlink(component: &str) -> Result<()> {
         let count = dev_config.components.len();
         dev_config.components.clear();
         dev_config.save()?;
+        reinit_all(&dev_config)?;
         println!("{} Unlinked {} component(s)", "✓".green(), count);
         return Ok(());
     }
-    
+
     // Try exact match first
     if dev_config.components.remove(component).is_some() {
         dev_config.save()?;
+        reinit_all(&dev_config)?;
         println!("{} Component '{}' unlinked", "✓".green(), component);
         return Ok(());
     }
-    
+
     // Try with plugin- prefix
     let with_prefix = format!("plugin-{}", component);
     if dev_config.components.remove(&with_prefix).is_some() {
         dev_config.save()?;
+        reinit_all(&dev_config)?;
         println!("{} Plugin '{}' unlinked", "✓".green(), component);
         return Ok(());
     }
-    
+
     println!("{} Component '{}' was not linked", "Note:".yellow(), component);
     Ok(())
 }
@@ -939,6 +951,29 @@ fn detect_mingw_path(qt_path: &str) -> Option<(String, String)> {
     None
 }
 
+/// Infer project source root from a build output path.
+///
+/// Tries:
+/// 1. Parent of build_path (convention: <source>/build → <source>)
+/// 2. Current working directory
+///
+/// Returns Some(normalized_path) if a CMakeLists.txt is found, None otherwise.
+fn infer_project_root(build_path: &std::path::Path) -> Option<String> {
+    // Try parent of build path (convention: <source>/build)
+    if let Some(parent) = build_path.parent() {
+        if parent.join("CMakeLists.txt").exists() {
+            return Some(normalize_path(parent.to_path_buf()));
+        }
+    }
+    // Try CWD
+    if let Ok(cwd) = env::current_dir() {
+        if cwd.join("CMakeLists.txt").exists() {
+            return Some(normalize_path(cwd));
+        }
+    }
+    None
+}
+
 /// Map component name to CMake package directory variable name
 fn component_cmake_dir_var(component_name: &str) -> Option<&'static str> {
     match component_name {
@@ -948,54 +983,34 @@ fn component_cmake_dir_var(component_name: &str) -> Option<&'static str> {
     }
 }
 
-/// Init command: generate CMakeUserPresets.json for the current project
-pub fn init(clean: bool) -> Result<()> {
-    println!("{}", "MPF Project Init".bold().cyan());
-
-    let cwd = env::current_dir()?;
-
-    // Verify CMakeLists.txt exists
-    if !cwd.join("CMakeLists.txt").exists() {
-        bail!("No CMakeLists.txt found in current directory. Run this from a CMake project root.");
+/// Generate CMakeUserPresets.json for a project directory.
+///
+/// Pure logic — no interactive output. Also clears CMake cache (CMakeCache.txt
+/// + CMakeFiles/) so the new preset values take effect on next configure.
+///
+/// Returns Ok(true) if generated, Ok(false) if skipped (no CMakeLists.txt).
+fn generate_user_presets(
+    project_dir: &std::path::Path,
+    dev_config: &DevConfig,
+    qt_path_fwd: &str,
+    gcc: &str,
+    gpp: &str,
+) -> Result<bool> {
+    // Skip if not a CMake project
+    if !project_dir.join("CMakeLists.txt").exists() {
+        return Ok(false);
     }
 
-    // Clean CMake cache / build directory
-    let build_dir = cwd.join("build");
-    if clean {
-        // --clean: remove entire build directory
-        if build_dir.exists() {
-            fs::remove_dir_all(&build_dir)
-                .with_context(|| format!("Failed to remove {}", build_dir.display()))?;
-            println!("{} Removed {}", "✓".green(), build_dir.display());
-        }
-    } else {
-        // Default: only clear CMake cache files, keep compiled artifacts
-        let cache_file = build_dir.join("CMakeCache.txt");
-        let cmake_files_dir = build_dir.join("CMakeFiles");
-        let had_cache = cache_file.exists();
-        let had_cmake_files = cmake_files_dir.exists();
-        if had_cache {
-            fs::remove_file(&cache_file)?;
-        }
-        if had_cmake_files {
-            fs::remove_dir_all(&cmake_files_dir)?;
-        }
-        if had_cache || had_cmake_files {
-            println!("{} Cleared CMake cache in {}", "✓".green(), build_dir.display());
-        }
+    // Clear CMake cache (keep compiled artifacts)
+    let build_dir = project_dir.join("build");
+    let cache_file = build_dir.join("CMakeCache.txt");
+    let cmake_files_dir = build_dir.join("CMakeFiles");
+    if cache_file.exists() {
+        let _ = fs::remove_file(&cache_file);
     }
-
-    // Load dev.json for linked source components
-    let dev_config = DevConfig::load().unwrap_or_default();
-
-    // Detect Qt path
-    let qt_path = detect_qt_path()
-        .context("Could not detect Qt installation. Set QT_DIR or Qt6_DIR environment variable.")?;
-    let qt_path_fwd = qt_path.replace('\\', "/");
-
-    // Detect MinGW compilers
-    let (gcc, gpp) = detect_mingw_path(&qt_path)
-        .context("Could not detect MinGW compilers under Qt Tools directory.")?;
+    if cmake_files_dir.exists() {
+        let _ = fs::remove_dir_all(&cmake_files_dir);
+    }
 
     // SDK current path
     let sdk_current = config::current_link();
@@ -1005,13 +1020,11 @@ pub fn init(clean: bool) -> Result<()> {
     let cmake_prefix_path = if let Some(sdk_comp) = dev_config.components.get("sdk") {
         if sdk_comp.mode == ComponentMode::Source {
             if let Some(lib_path) = &sdk_comp.lib {
-                // Derive install root from lib path (lib's parent = install prefix)
                 let sdk_local = std::path::Path::new(lib_path)
                     .parent()
                     .map(|p| p.to_string_lossy().replace('\\', "/"))
                     .unwrap_or_default();
                 if !sdk_local.is_empty() {
-                    println!("  {} Using local SDK: {}", "→".cyan(), sdk_local);
                     format!("{};{};{}", sdk_local, qt_path_fwd, sdk_current_str)
                 } else {
                     format!("{};{}", qt_path_fwd, sdk_current_str)
@@ -1034,16 +1047,13 @@ pub fn init(clean: bool) -> Result<()> {
         if comp.mode != ComponentMode::Source {
             continue;
         }
-        // Add QML paths from linked components
         if let Some(qml) = &comp.qml {
             let qml_fwd = qml.replace('\\', "/");
             if !qml_parts.contains(&qml_fwd) {
                 qml_parts.push(qml_fwd);
             }
         }
-        // Add package directory for library components
         if let Some(var_name) = component_cmake_dir_var(name) {
-            // Derive build root from component's lib or headers path
             let build_root = comp
                 .lib
                 .as_ref()
@@ -1061,59 +1071,31 @@ pub fn init(clean: bool) -> Result<()> {
         }
     }
 
-    // Add SDK qml and Qt qml
     qml_parts.push(format!("{}/qml", sdk_current_str));
     qml_parts.push(format!("{}/qml", qt_path_fwd));
     let qml_import_path = qml_parts.join(";");
 
-    // Build JSON using serde_json
+    // Build JSON
     let mut dev_cache = serde_json::Map::new();
     dev_cache.insert("CMAKE_BUILD_TYPE".into(), serde_json::Value::String("Debug".into()));
-    dev_cache.insert("CMAKE_C_COMPILER".into(), serde_json::Value::String(gcc.clone()));
-    dev_cache.insert("CMAKE_CXX_COMPILER".into(), serde_json::Value::String(gpp.clone()));
+    dev_cache.insert("CMAKE_C_COMPILER".into(), serde_json::Value::String(gcc.to_string()));
+    dev_cache.insert("CMAKE_CXX_COMPILER".into(), serde_json::Value::String(gpp.to_string()));
     dev_cache.insert("CMAKE_PREFIX_PATH".into(), serde_json::Value::String(cmake_prefix_path.clone()));
     dev_cache.insert("CMAKE_EXPORT_COMPILE_COMMANDS".into(), serde_json::Value::String("ON".into()));
     dev_cache.insert("QML_IMPORT_PATH".into(), serde_json::Value::String(qml_import_path.clone()));
-
     for (var_name, dir_path) in &extra_cache_vars {
         dev_cache.insert(var_name.clone(), serde_json::Value::String(dir_path.clone()));
     }
 
     let mut release_cache = serde_json::Map::new();
     release_cache.insert("CMAKE_BUILD_TYPE".into(), serde_json::Value::String("Release".into()));
-    release_cache.insert("CMAKE_C_COMPILER".into(), serde_json::Value::String(gcc));
-    release_cache.insert("CMAKE_CXX_COMPILER".into(), serde_json::Value::String(gpp));
+    release_cache.insert("CMAKE_C_COMPILER".into(), serde_json::Value::String(gcc.to_string()));
+    release_cache.insert("CMAKE_CXX_COMPILER".into(), serde_json::Value::String(gpp.to_string()));
     release_cache.insert("CMAKE_PREFIX_PATH".into(), serde_json::Value::String(cmake_prefix_path));
     release_cache.insert("CMAKE_EXPORT_COMPILE_COMMANDS".into(), serde_json::Value::String("ON".into()));
     release_cache.insert("QML_IMPORT_PATH".into(), serde_json::Value::String(qml_import_path));
-
     for (var_name, dir_path) in &extra_cache_vars {
         release_cache.insert(var_name.clone(), serde_json::Value::String(dir_path.clone()));
-    }
-
-    // Check if CMakePresets.json exists; if not, generate a base one
-    let base_presets_path = cwd.join("CMakePresets.json");
-    let has_base_presets = base_presets_path.exists();
-    if !has_base_presets {
-        let base_presets = serde_json::json!({
-            "version": 6,
-            "configurePresets": [
-                {
-                    "name": "base",
-                    "hidden": true,
-                    "generator": "Ninja",
-                    "binaryDir": "${sourceDir}/build",
-                    "cacheVariables": {
-                        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
-                    }
-                }
-            ]
-        });
-        let base_content = serde_json::to_string_pretty(&base_presets)?;
-        fs::write(&base_presets_path, &base_content)
-            .with_context(|| format!("Failed to write {}", base_presets_path.display()))?;
-        println!("{} Generated {}", "✓".green(), base_presets_path.display());
-        println!("  {} Commit this file to your repository", "→".cyan());
     }
 
     let presets = serde_json::json!({
@@ -1139,11 +1121,154 @@ pub fn init(clean: bool) -> Result<()> {
         ]
     });
 
-    let output_path = cwd.join("CMakeUserPresets.json");
+    let output_path = project_dir.join("CMakeUserPresets.json");
     let content = serde_json::to_string_pretty(&presets)?;
     fs::write(&output_path, &content)
         .with_context(|| format!("Failed to write {}", output_path.display()))?;
 
+    Ok(true)
+}
+
+/// Re-init all projects that have a known root directory.
+///
+/// Called after link/unlink to propagate dev.json changes to all
+/// CMakeUserPresets.json files. Silently skips projects whose root
+/// no longer exists.
+fn reinit_all(dev_config: &DevConfig) -> Result<()> {
+    let roots: Vec<&str> = dev_config
+        .components
+        .values()
+        .filter_map(|c| c.root.as_deref())
+        .collect();
+
+    if roots.is_empty() {
+        return Ok(());
+    }
+
+    // Detect Qt/MinGW once for all projects
+    let qt_path = match detect_qt_path() {
+        Some(p) => p,
+        None => return Ok(()), // Can't detect Qt — skip silently
+    };
+    let qt_path_fwd = qt_path.replace('\\', "/");
+    let (gcc, gpp) = match detect_mingw_path(&qt_path) {
+        Some(p) => p,
+        None => return Ok(()),
+    };
+
+    let mut updated = 0u32;
+    for root in &roots {
+        let path = std::path::Path::new(root);
+        if !path.exists() {
+            eprintln!("  {} Skipped {} (directory not found)", "⚠".yellow(), root);
+            continue;
+        }
+        match generate_user_presets(path, dev_config, &qt_path_fwd, &gcc, &gpp) {
+            Ok(true) => updated += 1,
+            Ok(false) => {
+                eprintln!("  {} Skipped {} (no CMakeLists.txt)", "⚠".yellow(), root);
+            }
+            Err(e) => {
+                eprintln!("  {} Failed {}: {}", "✗".red(), root, e);
+            }
+        }
+    }
+
+    if updated > 0 {
+        println!(
+            "\n{} Re-initialized {} project(s). {} to reload CMake configuration.",
+            "✓".green(),
+            updated,
+            "Restart IDE".bold()
+        );
+    }
+
+    Ok(())
+}
+
+/// Init command: generate CMakeUserPresets.json for the current project
+pub fn init(clean: bool) -> Result<()> {
+    println!("{}", "MPF Project Init".bold().cyan());
+
+    let cwd = env::current_dir()?;
+
+    // Verify CMakeLists.txt exists
+    if !cwd.join("CMakeLists.txt").exists() {
+        bail!("No CMakeLists.txt found in current directory. Run this from a CMake project root.");
+    }
+
+    // Clean CMake cache / build directory
+    let build_dir = cwd.join("build");
+    if clean {
+        // --clean: remove entire build directory
+        if build_dir.exists() {
+            fs::remove_dir_all(&build_dir)
+                .with_context(|| format!("Failed to remove {}", build_dir.display()))?;
+            println!("{} Removed {}", "✓".green(), build_dir.display());
+        }
+    }
+
+    // Load dev.json
+    let mut dev_config = DevConfig::load().unwrap_or_default();
+
+    // Detect Qt path
+    let qt_path = detect_qt_path()
+        .context("Could not detect Qt installation. Set QT_DIR or Qt6_DIR environment variable.")?;
+    let qt_path_fwd = qt_path.replace('\\', "/");
+
+    // Detect MinGW compilers
+    let (gcc, gpp) = detect_mingw_path(&qt_path)
+        .context("Could not detect MinGW compilers under Qt Tools directory.")?;
+
+    // Check if CMakePresets.json exists; if not, generate a base one
+    let base_presets_path = cwd.join("CMakePresets.json");
+    if !base_presets_path.exists() {
+        let base_presets = serde_json::json!({
+            "version": 6,
+            "configurePresets": [
+                {
+                    "name": "base",
+                    "hidden": true,
+                    "generator": "Ninja",
+                    "binaryDir": "${sourceDir}/build",
+                    "cacheVariables": {
+                        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+                    }
+                }
+            ]
+        });
+        let base_content = serde_json::to_string_pretty(&base_presets)?;
+        fs::write(&base_presets_path, &base_content)
+            .with_context(|| format!("Failed to write {}", base_presets_path.display()))?;
+        println!("{} Generated {}", "✓".green(), base_presets_path.display());
+        println!("  {} Commit this file to your repository", "→".cyan());
+    }
+
+    // Generate CMakeUserPresets.json (also clears CMake cache)
+    generate_user_presets(&cwd, &dev_config, &qt_path_fwd, &gcc, &gpp)?;
+
+    // Register this project's root in dev.json so reinit_all can find it.
+    // Match by checking which component's build paths are under <cwd>/build/.
+    let cwd_normalized = normalize_path(cwd.clone());
+    let cwd_build_prefix = format!("{}/build", cwd_normalized.replace('\\', "/"));
+    for (_name, comp) in dev_config.components.iter_mut() {
+        if comp.root.is_some() {
+            continue; // Already has root
+        }
+        // Check if any of this component's paths start with <cwd>/build/
+        let paths = [&comp.lib, &comp.qml, &comp.plugin, &comp.headers, &comp.bin];
+        let matches = paths.iter().any(|p| {
+            p.as_ref()
+                .map(|s| s.replace('\\', "/").starts_with(&cwd_build_prefix))
+                .unwrap_or(false)
+        });
+        if matches {
+            comp.root = Some(cwd_normalized.clone());
+        }
+    }
+    dev_config.save()?;
+
+    let output_path = cwd.join("CMakeUserPresets.json");
     println!("{} Generated {}", "✓".green(), output_path.display());
     println!();
     println!("  Presets: {}, {}", "dev".green(), "release".green());

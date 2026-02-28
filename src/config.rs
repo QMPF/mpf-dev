@@ -54,6 +54,12 @@ pub struct ComponentConfig {
     /// Path to executable binary directory (for host component)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bin: Option<String>,
+
+    /// Project source root directory (contains CMakeLists.txt)
+    /// Set by link (inferred) or init (from CWD). Used by reinit_all
+    /// to regenerate CMakeUserPresets.json when dev.json changes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
