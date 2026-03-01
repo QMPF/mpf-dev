@@ -178,6 +178,7 @@ pub const KNOWN_COMPONENTS: &[&str] = &[
     "sdk",
     "http-client",
     "ui-components",
+    "math-utils",
     "host",
     "plugin-orders",
     "plugin-rules",
