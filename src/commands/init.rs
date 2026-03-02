@@ -376,7 +376,9 @@ pub fn init(_clean: bool) -> Result<()> {
     println!("  预设：{}, {}", "dev".green(), "release".green());
     println!();
     println!("使用方式：");
+    println!("  # 根据预设生成构建系统（配置 CMake）");
     println!("  cmake --preset dev");
+    println!("  # 编译项目");
     println!("  cmake --build build");
 
     Ok(())
