@@ -218,10 +218,21 @@ fn link_component(name: &str, path: &str) -> Result<()> {
         None
     };
 
+    // On Windows, CMake installs DLLs to bin/ and import libs to lib/.
+    // If both exist, record bin/ separately so the host can add it to PATH.
+    let bin_path = if abs_path.join("bin").exists() {
+        Some(normalize_path(abs_path.join("bin")))
+    } else {
+        None
+    };
+
     println!("{} Linking component '{}'", "->".cyan(), name);
     println!("  Build root: {}", abs_path.display());
     if let Some(ref p) = lib_path {
         println!("  lib: {}", p);
+    }
+    if let Some(ref p) = bin_path {
+        println!("  bin: {}", p);
     }
     if let Some(ref p) = qml_path {
         println!("  qml: {}", p);
@@ -239,7 +250,7 @@ fn link_component(name: &str, path: &str) -> Result<()> {
             qml: qml_path,
             plugin: None,
             headers: headers_path,
-            bin: None,
+            bin: bin_path,
             root: infer_project_root(&abs_path),
         },
     );
