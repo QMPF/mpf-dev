@@ -214,7 +214,7 @@ fn generate_user_presets(
     let output_path = project_dir.join("CMakeUserPresets.json");
     let content = serde_json::to_string_pretty(&presets)?;
     fs::write(&output_path, &content)
-        .with_context(|| format!("Failed to write {}", output_path.display()))?;
+        .with_context(|| format!("写入 {} 失败", output_path.display()))?;
 
     Ok(true)
 }
@@ -250,7 +250,7 @@ pub(super) fn reinit_all(dev_config: &DevConfig) -> Result<()> {
         None => return Ok(()),
     };
 
-    println!("{} Re-initializing {} project(s)...", "→".cyan(), roots.len());
+    println!("{} 正在重新初始化 {} 个项目...", "→".cyan(), roots.len());
 
     let mut updated = 0u32;
     for root in &roots {
@@ -261,7 +261,7 @@ pub(super) fn reinit_all(dev_config: &DevConfig) -> Result<()> {
             .unwrap_or_else(|| root.to_string());
 
         if !path.exists() {
-            println!("  {} {} (directory not found)", "⚠".yellow(), name);
+            println!("  {} {} （目录不存在）", "⚠".yellow(), name);
             continue;
         }
         match generate_user_presets(path, dev_config, &qt_path_fwd, &gcc, &gpp) {
@@ -270,7 +270,7 @@ pub(super) fn reinit_all(dev_config: &DevConfig) -> Result<()> {
                 updated += 1;
             }
             Ok(false) => {
-                println!("  {} {} (no CMakeLists.txt)", "⚠".yellow(), name);
+                println!("  {} {} （无 CMakeLists.txt）", "⚠".yellow(), name);
             }
             Err(e) => {
                 println!("  {} {} — {}", "✗".red(), name, e);
@@ -280,12 +280,12 @@ pub(super) fn reinit_all(dev_config: &DevConfig) -> Result<()> {
 
     if updated > 0 {
         println!(
-            "\n{} {} project(s) re-initialized. Build directories cleaned.",
+            "\n{} {} 个项目已重新初始化，构建目录已清空。",
             "✓".green(),
             updated,
         );
         println!(
-            "  {} Close Qt Creator and reopen it, then rebuild from scratch.",
+            "  {} 请关闭 Qt Creator 并重新打开，然后重新执行构建。",
             "!".yellow().bold()
         );
     }
@@ -295,13 +295,13 @@ pub(super) fn reinit_all(dev_config: &DevConfig) -> Result<()> {
 
 /// Init command: generate CMakeUserPresets.json for the current project
 pub fn init(_clean: bool) -> Result<()> {
-    println!("{}", "MPF Project Init".bold().cyan());
+    println!("{}", "MPF 项目初始化".bold().cyan());
 
     let cwd = env::current_dir()?;
 
     // Verify CMakeLists.txt exists
     if !cwd.join("CMakeLists.txt").exists() {
-        bail!("No CMakeLists.txt found in current directory. Run this from a CMake project root.");
+        bail!("当前目录未找到 CMakeLists.txt，请在 CMake 项目根目录执行此命令。");
     }
 
     // Load dev.json
@@ -309,13 +309,13 @@ pub fn init(_clean: bool) -> Result<()> {
 
     // Detect Qt path
     let qt_path = detect_qt_path().context(
-        "Could not detect Qt installation. Set QT_DIR or Qt6_DIR environment variable.",
+        "未检测到 Qt 安装路径，请设置 QT_DIR 或 Qt6_DIR 环境变量。",
     )?;
     let qt_path_fwd = qt_path.replace('\\', "/");
 
     // Detect MinGW compilers
     let (gcc, gpp) = detect_mingw_path(&qt_path)
-        .context("Could not detect MinGW compilers under Qt Tools directory.")?;
+        .context("未在 Qt Tools 目录下检测到 MinGW 编译器。")?;
 
     // Check if CMakePresets.json exists; if not, generate a base one
     let base_presets_path = cwd.join("CMakePresets.json");
@@ -336,13 +336,13 @@ pub fn init(_clean: bool) -> Result<()> {
         });
         let base_content = serde_json::to_string_pretty(&base_presets)?;
         fs::write(&base_presets_path, &base_content)
-            .with_context(|| format!("Failed to write {}", base_presets_path.display()))?;
+            .with_context(|| format!("写入 {} 失败", base_presets_path.display()))?;
         println!(
-            "{} Generated {}",
+            "{} 已生成 {}",
             "✓".green(),
             base_presets_path.display()
         );
-        println!("  {} Commit this file to your repository", "->".cyan());
+        println!("  {} 请将此文件提交到代码仓库", "→".cyan());
     }
 
     // Generate CMakeUserPresets.json (also clears CMake cache)
@@ -368,14 +368,14 @@ pub fn init(_clean: bool) -> Result<()> {
     dev_config.save()?;
 
     let output_path = cwd.join("CMakeUserPresets.json");
-    println!("{} Generated {}", "✓".green(), output_path.display());
-    println!("{} Build directory cleaned", "✓".green());
+    println!("{} 已生成 {}", "✓".green(), output_path.display());
+    println!("{} 构建目录已清空", "✓".green());
     println!();
-    println!("  {} Close Qt Creator and reopen it, then rebuild from scratch.", "!".yellow().bold());
+    println!("  {} 请关闭 Qt Creator 并重新打开，然后重新执行构建。", "!".yellow().bold());
     println!();
-    println!("  Presets: {}, {}", "dev".green(), "release".green());
+    println!("  预设：{}, {}", "dev".green(), "release".green());
     println!();
-    println!("Usage:");
+    println!("使用方式：");
     println!("  cmake --preset dev");
     println!("  cmake --build build");
 
