@@ -11,8 +11,8 @@ use super::{
 
 /// Generate CMakeUserPresets.json for a project directory.
 ///
-/// Pure logic — no interactive output. Also clears CMake cache (CMakeCache.txt
-/// + CMakeFiles/) so the new preset values take effect on next configure.
+/// Pure logic — no interactive output. Always wipes the entire build/
+/// directory so stale artifacts and cmake cache never linger.
 ///
 /// Returns Ok(true) if generated, Ok(false) if skipped (no CMakeLists.txt).
 fn generate_user_presets(
@@ -27,15 +27,10 @@ fn generate_user_presets(
         return Ok(false);
     }
 
-    // Clear CMake cache (keep compiled artifacts)
+    // Clean entire build directory — removes stale artifacts and cmake cache
     let build_dir = project_dir.join("build");
-    let cache_file = build_dir.join("CMakeCache.txt");
-    let cmake_files_dir = build_dir.join("CMakeFiles");
-    if cache_file.exists() {
-        let _ = fs::remove_file(&cache_file);
-    }
-    if cmake_files_dir.exists() {
-        let _ = fs::remove_dir_all(&cmake_files_dir);
+    if build_dir.exists() {
+        let _ = fs::remove_dir_all(&build_dir);
     }
 
     // SDK current path
@@ -279,10 +274,13 @@ pub(super) fn reinit_all(dev_config: &DevConfig) -> Result<()> {
 
     if updated > 0 {
         println!(
-            "\n{} Re-initialized {} project(s). {} to reload CMake configuration.",
+            "\n{} Re-initialized {} project(s). Build directories cleaned.",
             "✓".green(),
             updated,
-            "Restart IDE".bold()
+        );
+        println!(
+            "  {} Close Qt Creator and reopen it, then rebuild from scratch.",
+            "!".yellow().bold()
         );
     }
 
@@ -290,7 +288,7 @@ pub(super) fn reinit_all(dev_config: &DevConfig) -> Result<()> {
 }
 
 /// Init command: generate CMakeUserPresets.json for the current project
-pub fn init(clean: bool) -> Result<()> {
+pub fn init(_clean: bool) -> Result<()> {
     println!("{}", "MPF Project Init".bold().cyan());
 
     let cwd = env::current_dir()?;
@@ -298,16 +296,6 @@ pub fn init(clean: bool) -> Result<()> {
     // Verify CMakeLists.txt exists
     if !cwd.join("CMakeLists.txt").exists() {
         bail!("No CMakeLists.txt found in current directory. Run this from a CMake project root.");
-    }
-
-    // Clean CMake cache / build directory
-    let build_dir = cwd.join("build");
-    if clean {
-        if build_dir.exists() {
-            fs::remove_dir_all(&build_dir)
-                .with_context(|| format!("Failed to remove {}", build_dir.display()))?;
-            println!("{} Removed {}", "✓".green(), build_dir.display());
-        }
     }
 
     // Load dev.json
@@ -375,6 +363,9 @@ pub fn init(clean: bool) -> Result<()> {
 
     let output_path = cwd.join("CMakeUserPresets.json");
     println!("{} Generated {}", "✓".green(), output_path.display());
+    println!("{} Build directory cleaned", "✓".green());
+    println!();
+    println!("  {} Close Qt Creator and reopen it, then rebuild from scratch.", "!".yellow().bold());
     println!();
     println!("  Presets: {}, {}", "dev".green(), "release".green());
     println!();
