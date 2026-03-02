@@ -174,7 +174,7 @@ mpf-dev use v1.0.32
 
 将本地构建产物注册到 `dev.json`，使 host 在运行时优先加载这些路径。
 
-> **自动扩散：** 每次 `link` 后，mpf-dev 会自动为所有已注册项目重新生成 `CMakeUserPresets.json` 并清除 CMake 缓存，确保新组件路径立即在所有项目中生效。操作完成后会提示重启 IDE。
+> **自动扩散：** 每次 `link` 后，mpf-dev 会自动为所有已注册项目重新生成 `CMakeUserPresets.json`，确保新组件路径立即在所有项目中生效。Qt Creator 会自动检测 preset 变化，无需重启。
 
 #### `mpf-dev link plugin <name> <build-path>`
 
@@ -246,7 +246,7 @@ mpf-dev link manual my-lib --lib ./build/lib --qml ./build/qml --headers ./inclu
 
 ### `mpf-dev unlink <component>`
 
-取消组件的源码注册。取消后同样会自动重新生成所有已注册项目的 CMake preset。
+取消组件的源码注册。取消后同样会自动重新生成所有已注册项目的 `CMakeUserPresets.json`。
 
 ```bash
 mpf-dev unlink orders          # 取消单个组件
@@ -265,12 +265,12 @@ mpf-dev init --clean           # 生成 preset，删除整个 build/ 目录
 
 **默认行为：**
 - 生成包含 `dev` 和 `release` 两个配置的 `CMakeUserPresets.json`
-- 删除 `build/CMakeCache.txt` 和 `build/CMakeFiles/`（确保新 preset 干净生效）
+- 清除 `build/CMakeCache.txt` 和 `build/CMakeFiles/`（确保新 preset 干净生效），不影响构建产物
 - 读取 `dev.json` 中的已注册组件，自动添加 QML 路径和 CMake 包路径
 - 将项目根目录记录到 `dev.json`（供后续 link/unlink 自动扩散使用）
 
 **`--clean` 行为：**
-- 删除整个 `build/` 目录
+- 删除整个 `build/` 目录（包括所有构建产物）
 - 然后生成 `CMakeUserPresets.json`
 
 **生成的 preset 内容：**
@@ -279,7 +279,7 @@ mpf-dev init --clean           # 生成 preset，删除整个 build/ 目录
 - `QML_IMPORT_PATH`：已注册组件 QML 路径 + SDK QML + Qt QML
 - 已注册库组件的 `<PackageName>_DIR` 变量
 
-> **提示：** 通常只需在首次使用项目时手动执行 `mpf-dev init`。后续通过 `link` / `unlink` 变更组件时，所有项目的 preset 会自动更新。
+> **提示：** 通常只需在首次使用项目时手动执行 `mpf-dev init`。后续通过 `link` / `unlink` 变更组件时，所有项目的 `CMakeUserPresets.json` 会自动更新，Qt Creator 能自动检测变化。
 
 ### `mpf-dev status`
 
@@ -420,17 +420,17 @@ mpf-dev init
 cmake --preset dev
 cmake --build build
 
-# 注册库组件（所有已注册项目的 CMake preset 自动更新，无需手动 re-init）
+# 注册库组件（所有已注册项目的 CMakeUserPresets.json 自动更新，无需手动 re-init）
 mpf-dev link component ui-components ./build
 
-# 重启 IDE 使新的 CMake 配置生效，然后重新构建依赖此库的项目
+# Qt Creator 会自动检测 preset 变化，重新构建依赖此库的项目即可
 cd ../mpf-plugin-orders
 cmake --preset dev
 cmake --build build
 mpf-dev run
 ```
 
-> **注意：** `mpf-dev link` 会自动为所有已执行过 `init` 的项目重新生成 `CMakeUserPresets.json` 并清除 CMake 缓存。你只需重启 IDE 并重新构建即可。
+> **注意：** `mpf-dev link` 会自动为所有已执行过 `init` 的项目重新生成 `CMakeUserPresets.json`（不影响构建目录）。Qt Creator 会自动检测变化，直接重新构建即可。
 
 ### 4.3 SDK 本地开发
 
@@ -450,7 +450,7 @@ cmake --install build --prefix ./install
 # 3. 链接本地 SDK（所有已注册项目的 CMAKE_PREFIX_PATH 自动更新）
 mpf-dev link sdk ./install
 
-# 4. 重启 IDE，在其他项目中重新构建
+# 4. 在其他项目中重新构建（Qt Creator 会自动检测 preset 变化）
 cd ../mpf-plugin-orders
 cmake --preset dev
 cmake --build build
@@ -473,7 +473,7 @@ cmake --preset dev
 cmake --build build
 mpf-dev link host ./build
 
-# 注册插件（此时 Host 的 preset 也会自动更新）
+# 注册插件（此时 Host 的 preset 也会自动更新，Qt Creator 自动检测变化）
 cd ../mpf-plugin-orders
 mpf-dev init
 cmake --preset dev
@@ -500,16 +500,24 @@ mpf-dev workspace run          # 运行
 mpf-host 在启动时自动读取 `~/.mpf-sdk/dev.json`，发现已注册的源码组件路径。因此在 Qt Creator 中直接调试时**无需手动配置环境变量**。
 
 ```bash
-# 1. 注册组件
-mpf-dev link host ./build
-mpf-dev link plugin orders ../mpf-plugin-orders/build
-
-# 2. 初始化项目
+# 1. 在各项目目录初始化并构建
+cd mpf-host
 mpf-dev init
+cmake --preset dev
+cmake --build build
+
+cd ../mpf-plugin-orders
+mpf-dev init
+cmake --preset dev
+cmake --build build
+
+# 2. 注册组件（构建完成后）
+mpf-dev link plugin orders ./build
+mpf-dev link host ../mpf-host/build
 
 # 3. 在 Qt Creator 中：
 #    - 打开 CMakeLists.txt
-#    - 选择 "dev" preset
+#    - 选择 "dev" preset（Qt Creator 会自动检测 preset 变化）
 #    - 构建并运行/调试
 ```
 
@@ -621,14 +629,12 @@ mpf-dev init    # 重新生成
 
 1. 更新 `dev.json` 中的组件信息
 2. 遍历 `dev.json` 中所有带 `root` 字段的组件
-3. 对每个项目目录重新生成 `CMakeUserPresets.json`
-4. 清除每个项目的 `build/CMakeCache.txt` 和 `build/CMakeFiles/`
-5. 输出提示："Re-initialized N project(s). **Restart IDE** to reload CMake configuration."
+3. 对每个项目目录重新生成 `CMakeUserPresets.json`（不影响构建目录和构建产物）
 
 这意味着：
 - 注册新组件后，**不需要**在每个项目中手动执行 `mpf-dev init`
 - 新的 QML 路径和 CMake 包路径会立即出现在所有项目的 preset 中
-- **只需重启 IDE** 使新配置生效，然后重新构建
+- Qt Creator 会自动检测 preset 变化并重新加载，无需重启 IDE
 
 ### 运行时发现
 
@@ -799,7 +805,7 @@ cmake -B build && cmake --build build
 cmake --install build --prefix ./install
 mpf-dev link sdk ./install
 
-# 所有已注册项目自动更新，重启 IDE 后重新构建即可
+# 所有已注册项目的 preset 自动更新，直接重新构建即可
 cd ../mpf-plugin-orders
 cmake --preset dev
 cmake --build build
@@ -816,6 +822,4 @@ mpf-dev unlink sdk
 
 ### Q: `link` 后其他项目需要做什么？
 
-无需手动操作。`mpf-dev link` 会自动为所有已执行过 `init` 的项目重新生成 `CMakeUserPresets.json` 并清除 CMake 缓存。你只需：
-1. 重启 IDE（使新的 CMake 配置生效）
-2. 重新构建项目
+无需手动操作。`mpf-dev link` 会自动为所有已执行过 `init` 的项目重新生成 `CMakeUserPresets.json`（不影响构建目录和构建产物）。Qt Creator 会自动检测 preset 变化，你只需重新构建项目即可。

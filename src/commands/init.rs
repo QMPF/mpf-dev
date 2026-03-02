@@ -11,8 +11,8 @@ use super::{
 
 /// Generate CMakeUserPresets.json for a project directory.
 ///
-/// Pure logic — no interactive output. Always wipes the entire build/
-/// directory so stale artifacts and cmake cache never linger.
+/// Pure logic — no interactive output. Only writes the preset file;
+/// does NOT touch the build directory.
 ///
 /// Returns Ok(true) if generated, Ok(false) if skipped (no CMakeLists.txt).
 fn generate_user_presets(
@@ -25,12 +25,6 @@ fn generate_user_presets(
     // Skip if not a CMake project
     if !project_dir.join("CMakeLists.txt").exists() {
         return Ok(false);
-    }
-
-    // Clean entire build directory — removes stale artifacts and cmake cache
-    let build_dir = project_dir.join("build");
-    if build_dir.exists() {
-        let _ = fs::remove_dir_all(&build_dir);
     }
 
     // SDK current path
@@ -222,8 +216,9 @@ fn generate_user_presets(
 /// Re-init all projects that have a known root directory.
 ///
 /// Called after link/unlink to propagate dev.json changes to all
-/// CMakeUserPresets.json files. Silently skips projects whose root
-/// no longer exists.
+/// CMakeUserPresets.json files. Only regenerates preset files — does
+/// NOT touch build directories. Qt Creator detects preset changes
+/// automatically. Silently skips projects whose root no longer exists.
 pub(super) fn reinit_all(dev_config: &DevConfig) -> Result<()> {
     // Collect roots, deduplicate by normalized path (multiple components can
     // share the same project root, e.g. plugin-lib and plugin-lib-qml).
@@ -280,21 +275,25 @@ pub(super) fn reinit_all(dev_config: &DevConfig) -> Result<()> {
 
     if updated > 0 {
         println!(
-            "\n{} {} 个项目已重新初始化，构建目录已清空。",
+            "\n{} {} 个项目的 CMakeUserPresets.json 已更新。",
             "✓".green(),
             updated,
         );
         println!(
-            "  {} 请关闭 Qt Creator 并重新打开，然后重新执行构建。",
-            "!".yellow().bold()
+            "  {} Qt Creator 会自动检测 preset 变化，无需重新打开。",
+            "→".cyan()
         );
     }
 
     Ok(())
 }
 
-/// Init command: generate CMakeUserPresets.json for the current project
-pub fn init(_clean: bool) -> Result<()> {
+/// Init command: generate CMakeUserPresets.json for the current project.
+///
+/// With `--clean`: deletes the entire `build/` directory.
+/// Without `--clean`: deletes only `build/CMakeCache.txt` and `build/CMakeFiles/`
+/// so that the new preset takes effect cleanly.
+pub fn init(clean: bool) -> Result<()> {
     println!("{}", "MPF 项目初始化".bold().cyan());
 
     let cwd = env::current_dir()?;
@@ -345,7 +344,23 @@ pub fn init(_clean: bool) -> Result<()> {
         println!("  {} 请将此文件提交到代码仓库", "→".cyan());
     }
 
-    // Generate CMakeUserPresets.json (also clears CMake cache)
+    // Clean build artifacts based on --clean flag
+    let build_dir = cwd.join("build");
+    if clean {
+        // --clean: remove entire build directory
+        if build_dir.exists() {
+            let _ = fs::remove_dir_all(&build_dir);
+        }
+    } else {
+        // Default: only remove CMake cache so new preset takes effect
+        let _ = fs::remove_file(build_dir.join("CMakeCache.txt"));
+        let cmake_files = build_dir.join("CMakeFiles");
+        if cmake_files.exists() {
+            let _ = fs::remove_dir_all(&cmake_files);
+        }
+    }
+
+    // Generate CMakeUserPresets.json
     generate_user_presets(&cwd, &dev_config, &qt_path_fwd, &gcc, &gpp)?;
 
     // Register this project's root in dev.json so reinit_all can find it.
@@ -369,9 +384,11 @@ pub fn init(_clean: bool) -> Result<()> {
 
     let output_path = cwd.join("CMakeUserPresets.json");
     println!("{} 已生成 {}", "✓".green(), output_path.display());
-    println!("{} 构建目录已清空", "✓".green());
-    println!();
-    println!("  {} 请关闭 Qt Creator 并重新打开，然后重新执行构建。", "!".yellow().bold());
+    if clean {
+        println!("{} 构建目录已清空（--clean）", "✓".green());
+    } else {
+        println!("{} CMake 缓存已清除", "✓".green());
+    }
     println!();
     println!("  预设：{}, {}", "dev".green(), "release".green());
     println!();
