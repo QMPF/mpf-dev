@@ -420,11 +420,20 @@ pub fn unlink(component: &str) -> Result<()> {
     let mut dev_config = DevConfig::load()?;
 
     if component == "all" {
+        if dev_config.components.is_empty() {
+            println!("{} 没有已链接的组件", "Note:".yellow());
+            return Ok(());
+        }
+
         let count = dev_config.components.len();
+        println!("{} 正在解除所有组件链接...", "->".cyan());
+        for name in dev_config.components.keys() {
+            println!("  - {}", name);
+        }
         dev_config.components.clear();
         dev_config.save()?;
         reinit_all(&dev_config)?;
-        println!("{} Unlinked {} component(s)", "✓".green(), count);
+        println!("{} 已解除 {} 个组件的链接", "✓".green(), count);
         return Ok(());
     }
 
