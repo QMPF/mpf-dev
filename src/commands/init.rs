@@ -225,10 +225,14 @@ fn generate_user_presets(
 /// CMakeUserPresets.json files. Silently skips projects whose root
 /// no longer exists.
 pub(super) fn reinit_all(dev_config: &DevConfig) -> Result<()> {
+    // Collect roots, deduplicate by normalized path (multiple components can
+    // share the same project root, e.g. plugin-lib and plugin-lib-qml).
+    let mut seen = std::collections::HashSet::new();
     let roots: Vec<&str> = dev_config
         .components
         .values()
         .filter_map(|c| c.root.as_deref())
+        .filter(|r| seen.insert(r.to_lowercase().replace('\\', "/")))
         .collect();
 
     if roots.is_empty() {
@@ -246,35 +250,37 @@ pub(super) fn reinit_all(dev_config: &DevConfig) -> Result<()> {
         None => return Ok(()),
     };
 
+    println!("{} Re-initializing {} project(s)...", "→".cyan(), roots.len());
+
     let mut updated = 0u32;
     for root in &roots {
         let path = std::path::Path::new(root);
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| root.to_string());
+
         if !path.exists() {
-            eprintln!(
-                "  {} Skipped {} (directory not found)",
-                "⚠".yellow(),
-                root
-            );
+            println!("  {} {} (directory not found)", "⚠".yellow(), name);
             continue;
         }
         match generate_user_presets(path, dev_config, &qt_path_fwd, &gcc, &gpp) {
-            Ok(true) => updated += 1,
+            Ok(true) => {
+                println!("  {} {}", "✓".green(), name);
+                updated += 1;
+            }
             Ok(false) => {
-                eprintln!(
-                    "  {} Skipped {} (no CMakeLists.txt)",
-                    "⚠".yellow(),
-                    root
-                );
+                println!("  {} {} (no CMakeLists.txt)", "⚠".yellow(), name);
             }
             Err(e) => {
-                eprintln!("  {} Failed {}: {}", "✗".red(), root, e);
+                println!("  {} {} — {}", "✗".red(), name, e);
             }
         }
     }
 
     if updated > 0 {
         println!(
-            "\n{} Re-initialized {} project(s). Build directories cleaned.",
+            "\n{} {} project(s) re-initialized. Build directories cleaned.",
             "✓".green(),
             updated,
         );
